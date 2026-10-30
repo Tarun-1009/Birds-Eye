@@ -1,99 +1,83 @@
 {
-  "timestamp": "2026-10-31T02:02:20Z",
+  "timestamp": "2026-10-31T02:11:44Z",
   "total_recordings_tested": 1,
   "results": [
     {
-      "video": "sample_cctv_recording.mp4",
+      "video": "Camera1.mp4",
       "status": "PASSED",
       "metadata": {
         "readable": true,
-        "filename": "sample_cctv_recording.mp4",
-        "filepath": "D:\\Development\\project\\Birds-Eye\\data\\videos\\sample_cctv_recording.mp4",
-        "width": 640,
-        "height": 480,
-        "fps": 25.0,
-        "total_frames": 125,
-        "duration_sec": 5.0,
-        "file_size_bytes": 5388474
+        "filename": "Camera1.mp4",
+        "filepath": "/Users/ujjwalsingh/Desktop/Birds_eye/Birds-Eye/data/videos/Camera1.mp4",
+        "width": 1920,
+        "height": 1080,
+        "fps": 59.94,
+        "total_frames": 19179,
+        "duration_sec": 319.99,
+        "file_size_bytes": 86299560
       },
       "performance": {
-        "total_processing_seconds": 5.98,
-        "fps_processed": 20.91,
-        "avg_inference_latency_ms": 229.68,
-        "frames_evaluated": 25
+        "total_processing_seconds": 32.06,
+        "fps_processed": 598.27,
+        "avg_inference_latency_ms": 19.01,
+        "frames_evaluated": 959
       },
       "summary": {
-        "total_detections": 56,
-        "unique_local_objects_tracked": 3,
-        "local_ids_tracked": [
-          1,
-          2,
-          4
-        ],
-        "sampled_frames_with_detections": 25,
+        "total_detections": 10689,
+        "sampled_frames_with_detections": 959,
         "saved_crops_count": 20,
-        "highest_confidence": 0.921
+        "highest_confidence": 0.929
       },
       "sample_trajectory": [
         {
           "t": 0.0,
-          "local_id": 1,
-          "target_id": "ID_1",
-          "x": 41.77,
-          "y": 85.37,
+          "x": 82.96,
+          "y": 92.84,
           "visibleCameras": [
-            "sample_cctv_recording"
+            "Camera1"
           ],
           "class": "person",
-          "confidence": 0.886
+          "confidence": 0.891
         },
         {
-          "t": 0.2,
-          "local_id": 1,
-          "target_id": "ID_1",
-          "x": 41.1,
-          "y": 84.48,
+          "t": 12.35,
+          "x": 100.0,
+          "y": 35.74,
           "visibleCameras": [
-            "sample_cctv_recording"
+            "Camera1"
           ],
           "class": "person",
-          "confidence": 0.868
+          "confidence": 0.444
         },
         {
-          "t": 0.4,
-          "local_id": 1,
-          "target_id": "ID_1",
-          "x": 40.28,
-          "y": 83.41,
+          "t": 29.03,
+          "x": 100.0,
+          "y": 36.53,
           "visibleCameras": [
-            "sample_cctv_recording"
+            "Camera1"
           ],
           "class": "person",
-          "confidence": 0.874
+          "confidence": 0.591
         },
         {
-          "t": 0.6,
-          "local_id": 1,
-          "target_id": "ID_1",
-          "x": 39.47,
-          "y": 82.68,
+          "t": 45.38,
+          "x": 6.93,
+          "y": 22.63,
           "visibleCameras": [
-            "sample_cctv_recording"
+            "Camera1"
           ],
-          "class": "person",
-          "confidence": 0.873
+          "class": "suitcase",
+          "confidence": 0.469
         },
         {
-          "t": 0.8,
-          "local_id": 1,
-          "target_id": "ID_1",
-          "x": 38.99,
-          "y": 81.76,
+          "t": 59.73,
+          "x": 63.04,
+          "y": 53.52,
           "visibleCameras": [
-            "sample_cctv_recording"
+            "Camera1"
           ],
-          "class": "person",
-          "confidence": 0.896
+          "class": "backpack",
+          "confidence": 0.558
         }
       ]
     }
