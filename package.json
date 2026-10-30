@@ -6,7 +6,9 @@
     "install:all": "npm install --prefix backend && npm install --prefix frontend",
     "dev:backend": "npm run dev --prefix backend",
     "dev:frontend": "npm run dev --prefix frontend",
-    "test:ai": "ai_engine\\venv\\Scripts\\python.exe ai_engine/test_recording.py"
+    "test:ai": "ai_engine\\venv\\Scripts\\python.exe ai_engine/test_recording.py",
+    "db:init": "npm run db:init --prefix backend",
+    "db:seed": "npm run db:seed --prefix backend"
   },
   "keywords": [],
   "author": "",

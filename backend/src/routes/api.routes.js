@@ -9,6 +9,9 @@ import {
   deleteVideo,
   deleteTarget,
   runDetection,
+  getCameras,
+  getSightings,
+  getIdentities,
 } from '../controllers/api.controller.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -69,12 +72,17 @@ const uploadFields = upload.fields([
 
 const router = Router();
 
-// Routes
+// Surveillance Ingestion & Uploads
 router.get('/health', getHealth);
 router.get('/videos', getVideos);
 router.post('/upload', uploadFields, handleUpload);
 router.delete('/videos/:id', deleteVideo);
 router.delete('/target', deleteTarget);
 router.post('/detect', runDetection);
+
+// CCTV Tracker SQLite Database Endpoints
+router.get('/cameras', getCameras);
+router.get('/sightings', getSightings);
+router.get('/identities', getIdentities);
 
 export default router;

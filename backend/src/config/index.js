@@ -12,4 +12,5 @@ export const config = {
   port: process.env.PORT || 3001,
   nodeEnv: process.env.NODE_ENV || 'development',
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
+  dbPath: process.env.DATABASE_PATH || path.resolve(__dirname, '../../cctv_tracker.db'),
 };

@@ -6,12 +6,15 @@
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "db:init": "node src/db/initDb.js",
+    "db:seed": "node src/db/seedMockData.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "better-sqlite3": "^13.0.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",

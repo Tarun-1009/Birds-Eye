@@ -27,6 +27,13 @@ backend/uploads/targets/*
 .env.local
 .env.*.local
 
+# SQLite Databases
+*.db
+*.sqlite
+*.db-journal
+*.db-wal
+*.db-shm
+
 # Production builds
 dist/
 build/

@@ -5,9 +5,13 @@ import { fileURLToPath } from 'url';
 import { config } from './config/index.js';
 import apiRoutes from './routes/api.routes.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { initializeDatabase } from './db/initDb.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Initialize SQLite database and tables
+initializeDatabase();
 
 const app = express();
 

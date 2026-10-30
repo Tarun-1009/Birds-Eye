@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import db from '../db/db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -217,7 +218,6 @@ export const runDetection = (req, res) => {
 
   // Generate multi-angle detection detections and bird's eye projected trajectory
   const cameraDetections = data.videos.map((vid, index) => {
-    // Generate detection intervals for each camera angle
     const angleOffset = index * 2;
     return {
       videoId: vid.id,
@@ -277,4 +277,65 @@ export const runDetection = (req, res) => {
       detectedDuration: '14.8 seconds',
     },
   });
+};
+
+// 7. SQLite Cameras Endpoint
+export const getCameras = (req, res) => {
+  try {
+    const cameras = db.prepare('SELECT * FROM cameras ORDER BY id ASC').all();
+    res.json({ success: true, count: cameras.length, cameras });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+// 8. SQLite Sightings Endpoint (supports orientation filter: FRONT, BACK, LEFT, RIGHT)
+export const getSightings = (req, res) => {
+  try {
+    const { orientation, camera_id, global_identity_id, limit = 50 } = req.query;
+    let query = `
+      SELECT s.*, c.name as camera_name, g.label as target_label
+      FROM sightings s
+      LEFT JOIN cameras c ON s.camera_id = c.id
+      LEFT JOIN global_identities g ON s.global_identity_id = g.id
+      WHERE 1=1
+    `;
+    const params = [];
+
+    if (orientation) {
+      query += ' AND s.orientation = ?';
+      params.push(orientation.toUpperCase());
+    }
+    if (camera_id) {
+      query += ' AND s.camera_id = ?';
+      params.push(camera_id);
+    }
+    if (global_identity_id) {
+      query += ' AND s.global_identity_id = ?';
+      params.push(global_identity_id);
+    }
+
+    query += ' ORDER BY s.timestamp DESC LIMIT ?';
+    params.push(Number(limit));
+
+    const sightings = db.prepare(query).all(...params);
+    res.json({
+      success: true,
+      count: sightings.length,
+      filters: { orientation, camera_id, global_identity_id },
+      sightings,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+// 9. SQLite Global Identities Endpoint
+export const getIdentities = (req, res) => {
+  try {
+    const identities = db.prepare('SELECT * FROM global_identities ORDER BY created_at DESC').all();
+    res.json({ success: true, count: identities.length, identities });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 };
