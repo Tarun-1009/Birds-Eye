@@ -6,6 +6,12 @@ node_modules/
 .env.local
 .env.*.local
 
+# Uploaded video and image binaries
+backend/uploads/videos/*
+!backend/uploads/videos/.gitkeep
+backend/uploads/targets/*
+!backend/uploads/targets/.gitkeep
+
 # Production builds
 dist/
 build/
@@ -20,4 +26,3 @@ yarn-error.log*
 .idea/
 .DS_Store
 Thumbs.db
-
