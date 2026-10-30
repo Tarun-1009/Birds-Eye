@@ -2,16 +2,22 @@
 node_modules/
 
 # Python Virtual Environment & Caches
+.venv/
+venv/
+ai_engine/.venv/
 ai_engine/venv/
 __pycache__/
 *.py[cod]
 *$py.class
 ai_engine/models/*.pt
+*.pt
 
 # Video & Crop Artifacts (Large Binaries)
 data/videos/*.mp4
 data/videos/*.avi
 data/videos/*.mov
+!data/videos/cam1.mp4
+!data/videos/cam2.mp4
 data/crops/*.jpg
 data/crops/*.png
 data/output/*

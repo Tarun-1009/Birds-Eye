@@ -13,10 +13,9 @@ ai_engine/
 ├── synthetic_generator.py # Generates realistic multi-angle CCTV video feeds
 ├── detector.py            # Stream inspection, YOLO11n inference, crop extraction & tracking
 ├── test_recording.py      # Primary CLI test runner for recordings in the data folder
-├── run_test.bat           # One-click Windows runner
 ├── models/                # YOLO11n weights (yolo11n.pt) and test reference assets
 ├── tests/                 # Unittest test suite (test_pipeline.py)
-└── venv/                  # Python virtual environment (Torch, OpenCV, Ultralytics)
+└── .venv/                 # Python virtual environment (Torch, OpenCV, Ultralytics)
 ```
 
 ---
@@ -31,10 +30,7 @@ Run from the project root:
 npm run test:ai
 
 # Or direct Python execution:
-ai_engine\venv\Scripts\python.exe ai_engine\test_recording.py
-
-# Or Windows batch runner:
-ai_engine\run_test.bat
+python3 ai_engine/test_recording.py
 ```
 
 > **Note**: If `data/videos/` is empty when running the test, the test suite will automatically generate a realistic CCTV surveillance feed (`sample_cctv_recording.mp4`) and run the entire verification suite on it.
@@ -43,22 +39,22 @@ ai_engine\run_test.bat
 
 ```bash
 # Test a specific video file:
-ai_engine\venv\Scripts\python.exe ai_engine\test_recording.py --input "data/videos/my_cctv.mp4"
+python3 ai_engine/test_recording.py --input "data/videos/my_cctv.mp4"
 
 # Generate an annotated output video with bounding boxes & BEV coordinates:
-ai_engine\venv\Scripts\python.exe ai_engine\test_recording.py --render
+python3 ai_engine/test_recording.py --render
 
 # Evaluate every frame (no skipping):
-ai_engine\venv\Scripts\python.exe ai_engine\test_recording.py --step 1
+python3 ai_engine/test_recording.py --step 1
 
 # Force regenerate synthetic surveillance test footage:
-ai_engine\venv\Scripts\python.exe ai_engine\test_recording.py --generate
+python3 ai_engine/test_recording.py --generate
 ```
 
 ### 3. Run Standard Unittest Suite
 
 ```bash
-ai_engine\venv\Scripts\python.exe -m unittest discover -s ai_engine/tests -p "test_*.py"
+python3 -m unittest discover -s ai_engine/tests -p "test_*.py"
 ```
 
 ---
