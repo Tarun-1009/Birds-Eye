@@ -1,83 +1,120 @@
 {
-  "timestamp": "2026-10-31T02:11:44Z",
+  "timestamp": "2026-10-31T02:24:11Z",
   "total_recordings_tested": 1,
   "results": [
     {
-      "video": "Camera1.mp4",
+      "video": "cam1.mp4",
       "status": "PASSED",
       "metadata": {
         "readable": true,
-        "filename": "Camera1.mp4",
-        "filepath": "/Users/ujjwalsingh/Desktop/Birds_eye/Birds-Eye/data/videos/Camera1.mp4",
-        "width": 1920,
-        "height": 1080,
-        "fps": 59.94,
-        "total_frames": 19179,
-        "duration_sec": 319.99,
-        "file_size_bytes": 86299560
+        "filename": "cam1.mp4",
+        "filepath": "/Users/ujjwalsingh/Desktop/Birds_eye/Birds-Eye/data/videos/cam1.mp4",
+        "width": 1280,
+        "height": 720,
+        "fps": 25.0,
+        "total_frames": 150,
+        "duration_sec": 6.0,
+        "file_size_bytes": 2093276
       },
       "performance": {
-        "total_processing_seconds": 32.06,
-        "fps_processed": 598.27,
-        "avg_inference_latency_ms": 19.01,
-        "frames_evaluated": 959
+        "total_processing_seconds": 0.8,
+        "fps_processed": 186.62,
+        "avg_inference_latency_ms": 97.18,
+        "frames_evaluated": 6
       },
       "summary": {
-        "total_detections": 10689,
-        "sampled_frames_with_detections": 959,
+        "total_detections": 20,
+        "unique_local_objects_tracked": 12,
+        "local_ids_tracked": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          8,
+          9,
+          10,
+          18,
+          20,
+          39
+        ],
+        "sampled_frames_with_detections": 6,
         "saved_crops_count": 20,
-        "highest_confidence": 0.929
+        "highest_confidence": 0.88
       },
       "sample_trajectory": [
         {
           "t": 0.0,
-          "x": 82.96,
+          "local_id": 1,
+          "target_id": "ID_1",
+          "x": 82.97,
           "y": 92.84,
           "visibleCameras": [
-            "Camera1"
+            "cam1"
           ],
           "class": "person",
-          "confidence": 0.891
+          "confidence": 0.88,
+          "orientation": "BACK",
+          "carried_items": []
         },
         {
-          "t": 12.35,
-          "x": 100.0,
-          "y": 35.74,
+          "t": 0.0,
+          "local_id": 2,
+          "target_id": "ID_2",
+          "x": 47.71,
+          "y": 78.32,
           "visibleCameras": [
-            "Camera1"
+            "cam1"
           ],
           "class": "person",
-          "confidence": 0.444
+          "confidence": 0.879,
+          "orientation": "FRONT",
+          "carried_items": []
         },
         {
-          "t": 29.03,
-          "x": 100.0,
-          "y": 36.53,
+          "t": 0.0,
+          "local_id": 3,
+          "target_id": "ID_3",
+          "x": 55.47,
+          "y": 70.0,
           "visibleCameras": [
-            "Camera1"
+            "cam1"
           ],
           "class": "person",
-          "confidence": 0.591
+          "confidence": 0.763,
+          "orientation": "FRONT",
+          "carried_items": [
+            "backpack"
+          ]
         },
         {
-          "t": 45.38,
-          "x": 6.93,
-          "y": 22.63,
+          "t": 0.0,
+          "local_id": 4,
+          "target_id": "ID_4",
+          "x": 96.25,
+          "y": 58.8,
           "visibleCameras": [
-            "Camera1"
+            "cam1"
           ],
-          "class": "suitcase",
-          "confidence": 0.469
+          "class": "person",
+          "confidence": 0.712,
+          "orientation": "LEFT",
+          "carried_items": []
         },
         {
-          "t": 59.73,
-          "x": 63.04,
-          "y": 53.52,
+          "t": 0.0,
+          "local_id": 5,
+          "target_id": "ID_5",
+          "x": 59.93,
+          "y": 21.88,
           "visibleCameras": [
-            "Camera1"
+            "cam1"
           ],
-          "class": "backpack",
-          "confidence": 0.558
+          "class": "person",
+          "confidence": 0.675,
+          "orientation": "FRONT",
+          "carried_items": []
         }
       ]
     }

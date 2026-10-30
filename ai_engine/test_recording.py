@@ -16,13 +16,44 @@ PROJECT_ROOT = CURRENT_DIR.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+# Auto-detect and switch to virtual environment if cv2 is not available in current interpreter
+try:
+    import cv2
+except ModuleNotFoundError:
+    venv_candidates = [
+        CURRENT_DIR / ".venv" / "bin" / "python",
+        CURRENT_DIR / "venv" / "bin" / "python",
+        CURRENT_DIR / ".venv" / "bin" / "python3",
+        CURRENT_DIR / "venv" / "bin" / "python3",
+        CURRENT_DIR / ".venv" / "Scripts" / "python.exe",
+        CURRENT_DIR / "venv" / "Scripts" / "python.exe",
+        PROJECT_ROOT / ".venv" / "bin" / "python",
+        PROJECT_ROOT / "venv" / "bin" / "python",
+    ]
+    switched = False
+    if not os.environ.get("_BIRDS_EYE_VENV_ATTEMPTED"):
+        for py_bin in venv_candidates:
+            if py_bin.exists():
+                os.environ["_BIRDS_EYE_VENV_ATTEMPTED"] = "1"
+                os.execv(str(py_bin), [str(py_bin)] + sys.argv)
+                switched = True
+                break
+    if not switched:
+        print("[ERROR] Missing required dependency 'cv2' (opencv-python).")
+        print(f"Current Python interpreter: {sys.executable}")
+        print("\nPlease activate the project virtual environment or install dependencies:")
+        print("  source ai_engine/.venv/bin/activate")
+        print("  pip install -r ai_engine/requirements.txt")
+        sys.exit(1)
+
 from ai_engine.config import (
     DATA_DIR,
     VIDEOS_DIR,
     CROPS_DIR,
     OUTPUT_DIR,
     SUPPORTED_EXTENSIONS,
-    MODEL_PATH
+    MODEL_PATH,
+    DEFAULT_SAMPLE_STEP
 )
 from ai_engine.detector import RecordingProcessor
 from ai_engine.synthetic_generator import generate_test_recording
@@ -60,7 +91,7 @@ def print_banner():
 def run_tests(
     input_path: str = None,
     model_path: str = None,
-    sample_step: int = 5,
+    sample_step: int = DEFAULT_SAMPLE_STEP,
     save_crops: bool = True,
     render_annotated: bool = False,
     auto_generate: bool = True
@@ -186,7 +217,7 @@ def main():
     parser = argparse.ArgumentParser(description="Test surveillance video recordings in data folder using YOLO11n")
     parser.add_argument("--input", "-i", type=str, default=None, help="Specific video path or folder to test")
     parser.add_argument("--model", "-m", type=str, default=None, help="Path or name of YOLO weights (default: yolo11n.pt)")
-    parser.add_argument("--step", "-s", type=int, default=5, help="Sample inference every N frames (default: 5)")
+    parser.add_argument("--step", "-s", type=int, default=DEFAULT_SAMPLE_STEP, help=f"Sample inference every N frames (default: {DEFAULT_SAMPLE_STEP})")
     parser.add_argument("--no-crops", action="store_true", help="Disable saving detection crops")
     parser.add_argument("--render", "-r", action="store_true", help="Render annotated video with bounding boxes & BEV info")
     parser.add_argument("--generate", "-g", action="store_true", help="Force generate a synthetic test recording")

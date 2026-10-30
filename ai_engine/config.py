@@ -22,6 +22,7 @@ MODEL_NAME = "yolo11n.pt"
 MODEL_PATH = MODELS_DIR / MODEL_NAME
 CONFIDENCE_THRESHOLD = 0.35
 IOU_THRESHOLD = 0.45
+DEFAULT_SAMPLE_STEP = 20  # Analyze every 20 frames by default
 
 # Supported recording video extensions
 SUPPORTED_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v"}
@@ -34,6 +35,13 @@ TARGET_CLASSES = {
     3: "motorcycle",
     5: "bus",
     7: "truck",
+    24: "backpack",
+    26: "handbag",
+    28: "suitcase"
+}
+
+# Carried item classes to associate with tracked persons
+CARRIED_ITEM_CLASSES = {
     24: "backpack",
     26: "handbag",
     28: "suitcase"

@@ -2,10 +2,52 @@
 Unit tests for Birds-Eye AI Engine
 """
 import unittest
+import sys
+import os
 from pathlib import Path
+
+# Auto-detect and switch to virtual environment if dependencies are not in current interpreter
+try:
+    import cv2
+except ModuleNotFoundError:
+    CURRENT_DIR = Path(__file__).resolve().parent
+    AI_DIR = CURRENT_DIR.parent
+    PROJECT_ROOT = AI_DIR.parent
+    venv_candidates = [
+        AI_DIR / ".venv" / "bin" / "python",
+        AI_DIR / "venv" / "bin" / "python",
+        AI_DIR / ".venv" / "bin" / "python3",
+        AI_DIR / "venv" / "bin" / "python3",
+        AI_DIR / ".venv" / "Scripts" / "python.exe",
+        AI_DIR / "venv" / "Scripts" / "python.exe",
+        PROJECT_ROOT / ".venv" / "bin" / "python",
+        PROJECT_ROOT / "venv" / "bin" / "python",
+    ]
+    switched = False
+    if not os.environ.get("_BIRDS_EYE_VENV_ATTEMPTED"):
+        for py_bin in venv_candidates:
+            if py_bin.exists():
+                os.environ["_BIRDS_EYE_VENV_ATTEMPTED"] = "1"
+                os.execv(str(py_bin), [str(py_bin)] + sys.argv)
+                switched = True
+                break
+    if not switched:
+        print("[ERROR] Missing required dependency 'cv2' (opencv-python).")
+        print(f"Current Python interpreter: {sys.executable}")
+        print("\nPlease activate the project virtual environment or install dependencies:")
+        print("  source ai_engine/.venv/bin/activate")
+        print("  pip install -r ai_engine/requirements.txt")
+        sys.exit(1)
+
+# Ensure project root is in sys.path
+TEST_DIR = Path(__file__).resolve().parent
+ROOT_DIR = TEST_DIR.parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 import numpy as np
 
-from ai_engine.config import VIDEOS_DIR, CROPS_DIR
+from ai_engine.config import VIDEOS_DIR, CROPS_DIR, DEFAULT_SAMPLE_STEP
 from ai_engine.homography import HomographyTransformer
 from ai_engine.synthetic_generator import generate_test_recording
 from ai_engine.detector import RecordingProcessor
@@ -45,7 +87,7 @@ class TestAIEnginePipeline(unittest.TestCase):
     def test_detection_pipeline_run(self):
         results = self.processor.process_recording(
             video_path=self.test_video_path,
-            sample_step=4,
+            sample_step=DEFAULT_SAMPLE_STEP,
             save_crops=True,
             render_annotated=False
         )
