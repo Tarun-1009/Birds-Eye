@@ -1,0 +1,85 @@
+{
+  "timestamp": "2026-10-31T01:46:02Z",
+  "total_recordings_tested": 1,
+  "results": [
+    {
+      "video": "sample_cctv_recording.mp4",
+      "status": "PASSED",
+      "metadata": {
+        "readable": true,
+        "filename": "sample_cctv_recording.mp4",
+        "filepath": "D:\\Development\\project\\Birds-Eye\\data\\videos\\sample_cctv_recording.mp4",
+        "width": 640,
+        "height": 480,
+        "fps": 25.0,
+        "total_frames": 125,
+        "duration_sec": 5.0,
+        "file_size_bytes": 5388474
+      },
+      "performance": {
+        "total_processing_seconds": 5.54,
+        "fps_processed": 22.56,
+        "avg_inference_latency_ms": 213.93,
+        "frames_evaluated": 25
+      },
+      "summary": {
+        "total_detections": 63,
+        "sampled_frames_with_detections": 25,
+        "saved_crops_count": 20,
+        "highest_confidence": 0.921
+      },
+      "sample_trajectory": [
+        {
+          "t": 0.0,
+          "x": 41.77,
+          "y": 85.37,
+          "visibleCameras": [
+            "sample_cctv_recording"
+          ],
+          "class": "person",
+          "confidence": 0.886
+        },
+        {
+          "t": 0.0,
+          "x": 10.58,
+          "y": 86.6,
+          "visibleCameras": [
+            "sample_cctv_recording"
+          ],
+          "class": "person",
+          "confidence": 0.681
+        },
+        {
+          "t": 0.2,
+          "x": 23.41,
+          "y": 88.82,
+          "visibleCameras": [
+            "sample_cctv_recording"
+          ],
+          "class": "person",
+          "confidence": 0.866
+        },
+        {
+          "t": 0.4,
+          "x": 40.28,
+          "y": 83.41,
+          "visibleCameras": [
+            "sample_cctv_recording"
+          ],
+          "class": "person",
+          "confidence": 0.874
+        },
+        {
+          "t": 0.6,
+          "x": 20.48,
+          "y": 86.77,
+          "visibleCameras": [
+            "sample_cctv_recording"
+          ],
+          "class": "person",
+          "confidence": 0.882
+        }
+      ]
+    }
+  ]
+}

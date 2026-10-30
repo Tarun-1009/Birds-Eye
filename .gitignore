@@ -1,16 +1,31 @@
 # Dependencies
 node_modules/
 
-# Environment files
-.env
-.env.local
-.env.*.local
+# Python Virtual Environment & Caches
+ai_engine/venv/
+__pycache__/
+*.py[cod]
+*$py.class
+ai_engine/models/*.pt
 
-# Uploaded video and image binaries
+# Video & Crop Artifacts (Large Binaries)
+data/videos/*.mp4
+data/videos/*.avi
+data/videos/*.mov
+data/crops/*.jpg
+data/crops/*.png
+data/output/*
+!data/videos/.gitkeep
+!data/crops/.gitkeep
 backend/uploads/videos/*
 !backend/uploads/videos/.gitkeep
 backend/uploads/targets/*
 !backend/uploads/targets/.gitkeep
+
+# Environment files
+.env
+.env.local
+.env.*.local
 
 # Production builds
 dist/
