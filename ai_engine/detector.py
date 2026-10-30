@@ -24,6 +24,8 @@ from .config import (
 )
 from .homography import HomographyTransformer
 from .orientation import PoseOrientationEstimator
+from .reid_osnet import OSNetFeatureExtractor
+from .reid_gallery import ReIDGallery
 
 class RecordingProcessor:
     """
@@ -56,6 +58,8 @@ class RecordingProcessor:
         self.conf_thresh = confidence_thresh
         self.homography = HomographyTransformer(camera_preset=camera_angle)
         self.pose_estimator = PoseOrientationEstimator(device=self.device)
+        self.reid_extractor = OSNetFeatureExtractor(device=self.device)
+        self.gallery = ReIDGallery(similarity_threshold=0.75)
 
     def inspect_recording(self, video_path: Path) -> Dict[str, Any]:
         """
@@ -94,10 +98,11 @@ class RecordingProcessor:
         save_crops: bool = True,
         max_crops_per_video: int = 20,
         render_annotated: bool = False,
-        target_class_ids: Optional[List[int]] = None
+        target_class_ids: Optional[List[int]] = None,
+        gallery: Optional[ReIDGallery] = None
     ) -> Dict[str, Any]:
         """
-        Runs object detection and Bird's Eye View mapping on a surveillance recording.
+        Runs object detection, pose orientation, OSNet Re-ID, and Bird's Eye View mapping.
 
         Args:
             video_path: Path to the video file
@@ -106,7 +111,9 @@ class RecordingProcessor:
             max_crops_per_video: Max number of crops to save
             render_annotated: Whether to generate an annotated debug video
             target_class_ids: List of COCO class IDs to track (e.g. [0] for Person)
+            gallery: Optional shared ReIDGallery across camera feeds
         """
+        active_gallery = gallery if gallery is not None else self.gallery
         info = self.inspect_recording(video_path)
         cap = cv2.VideoCapture(str(video_path))
         
@@ -275,8 +282,9 @@ class RecordingProcessor:
                         [x1, y1, x2, y2], info["width"], info["height"]
                     )
 
-                    # Save image crop
+                    # Extract image crops and features for Person Re-ID
                     crop_filename = None
+                    crop_img = None
                     if save_crops and len(saved_crop_files) < max_crops_per_video:
                         crop_h = y2 - y1
                         crop_w = x2 - x1
@@ -288,16 +296,43 @@ class RecordingProcessor:
                             saved_crop_files.append(str(crop_path.relative_to(CROPS_DIR.parent)))
                             crop_filename = crop_name
 
+                    if crop_img is None:
+                        crop_img = frame[y1:y2, x1:x2]
+
+                    # Extract torso crop using pose-derived torso coordinates
+                    tx1, ty1, tx2, ty2 = torso_box
+                    if ty2 > ty1 and tx2 > tx1:
+                        torso_img = frame[ty1:ty2, tx1:tx2]
+                    else:
+                        torso_img = crop_img
+
+                    # Extract OSNet 512-dim normalized feature embeddings
+                    body_vec, torso_vec = self.reid_extractor.extract_pair(crop_img, torso_img)
+
+                    # Multi-orientation Cross-Camera Re-ID matching
                     carried_names = [ci["item"] for ci in p["carried_items"]]
+                    global_id, reid_sim, is_new_id = active_gallery.match_or_register(
+                        body_vector=body_vec,
+                        torso_vector=torso_vec,
+                        orientation=orientation,
+                        camera_id=video_stem,
+                        timestamp=timestamp_str,
+                        carried_items=carried_names,
+                        crop_image_url=crop_filename
+                    )
+
                     detection_item = {
                         "local_id": local_id,
-                        "target_id": f"ID_{local_id}",
+                        "global_identity_id": global_id,
+                        "target_id": f"ID_{local_id} ({global_id})",
                         "frame_index": frame_idx,
                         "timestamp": timestamp_str,
                         "timeSec": frame_sec,
                         "class": class_name,
                         "class_id": cls_id,
                         "confidence": round(conf, 3),
+                        "reid_similarity": reid_sim,
+                        "is_new_identity": is_new_id,
                         "orientation": orientation,
                         "carried_items": carried_names,
                         "carried_items_details": p["carried_items"],
@@ -329,12 +364,14 @@ class RecordingProcessor:
                     bev_trajectory.append({
                         "t": frame_sec,
                         "local_id": local_id,
-                        "target_id": f"ID_{local_id}",
+                        "global_identity_id": global_id,
+                        "target_id": f"ID_{local_id} ({global_id})",
                         "x": bev_coord["x"],
                         "y": bev_coord["y"],
                         "visibleCameras": [video_path.stem],
                         "class": class_name,
                         "confidence": round(conf, 3),
+                        "reid_similarity": reid_sim,
                         "orientation": orientation,
                         "carried_items": carried_names
                     })
@@ -391,6 +428,7 @@ class RecordingProcessor:
             },
             "saved_crops": saved_crop_files,
             "birdsEyeTrajectory": compact_trajectory,
-            "frameDetections": detections_by_frame
+            "frameDetections": detections_by_frame,
+            "identities": active_gallery.get_identities_summary()
         }
 
