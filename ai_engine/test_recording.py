@@ -141,6 +141,7 @@ def run_tests(
             print(f"           Frames Evaluated: {perf['frames_evaluated']} frames")
             print(f"           Throughput:       {perf['fps_processed']} FPS (Avg latency: {perf['avg_inference_latency_ms']} ms/frame)")
             print(f"           Total Targets:    {summary['total_detections']} detections")
+            print(f"           Tracked Local IDs:{summary.get('unique_local_objects_tracked', 0)} unique target(s) -> IDs: {summary.get('local_ids_tracked', [])}")
             print(f"           Top Confidence:   {summary['highest_confidence'] * 100:.1f}%")
             print(f"           Saved Crops:      {summary['saved_crops_count']} images -> data/crops/")
             print(f"           BEV Waypoints:    {len(trajectory)} coordinate points mapped to 0-100 ground plane")

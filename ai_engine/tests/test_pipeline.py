@@ -52,9 +52,13 @@ class TestAIEnginePipeline(unittest.TestCase):
         self.assertIn("recording_info", results)
         self.assertIn("performance", results)
         self.assertIn("summary", results)
+        self.assertIn("unique_local_objects_tracked", results["summary"])
+        self.assertIn("local_ids_tracked", results["summary"])
         self.assertIn("birdsEyeTrajectory", results)
         self.assertEqual(results.get("model"), "yolo11n.pt")
         self.assertGreater(results["performance"]["frames_evaluated"], 0)
+        if len(results["birdsEyeTrajectory"]) > 0:
+            self.assertIn("local_id", results["birdsEyeTrajectory"][0])
 
     @classmethod
     def tearDownClass(cls):

@@ -101,6 +101,7 @@ class RecordingProcessor:
         detections_by_frame = []
         bev_trajectory = []
         saved_crop_files = []
+        unique_local_ids = set()
         
         frame_idx = 0
         inference_times = []
@@ -125,8 +126,13 @@ class RecordingProcessor:
             # Only run inference on sampled frames
             if frame_idx % sample_step == 0:
                 t0 = time.time()
-                # Run YOLO inference
-                results = self.model(frame, conf=self.conf_thresh, verbose=False)[0]
+                # Run YOLO tracking with persistent local IDs
+                results = self.model.track(
+                    frame,
+                    persist=True,
+                    conf=self.conf_thresh,
+                    verbose=False
+                )[0]
                 t_infer = time.time() - t0
                 inference_times.append(t_infer)
 
@@ -155,6 +161,13 @@ class RecordingProcessor:
                     class_name = TARGET_CLASSES.get(cls_id, f"class_{cls_id}")
                     total_detections_count += 1
 
+                    # Extract persistent local track ID
+                    if box.id is not None and len(box.id) > 0:
+                        local_id = int(box.id[0].item())
+                    else:
+                        local_id = i + 1
+                    unique_local_ids.add(local_id)
+
                     # Project feet (bottom center) to Bird's-Eye View
                     bev_coord = self.homography.project_bbox(
                         [x1, y1, x2, y2], info["width"], info["height"]
@@ -167,13 +180,15 @@ class RecordingProcessor:
                         crop_w = x2 - x1
                         if crop_h > 15 and crop_w > 15:
                             crop_img = frame[y1:y2, x1:x2]
-                            crop_name = f"crop_{video_stem}_f{frame_idx:04d}_{class_name}_{i}.jpg"
+                            crop_name = f"crop_{video_stem}_id{local_id}_f{frame_idx:04d}_{class_name}.jpg"
                             crop_path = CROPS_DIR / crop_name
                             cv2.imwrite(str(crop_path), crop_img)
                             saved_crop_files.append(str(crop_path.relative_to(CROPS_DIR.parent)))
                             crop_filename = crop_name
 
                     detection_item = {
+                        "local_id": local_id,
+                        "target_id": f"ID_{local_id}",
                         "frame_index": frame_idx,
                         "timestamp": timestamp_str,
                         "timeSec": frame_sec,
@@ -201,6 +216,8 @@ class RecordingProcessor:
                     # Add to overall trajectory point
                     bev_trajectory.append({
                         "t": frame_sec,
+                        "local_id": local_id,
+                        "target_id": f"ID_{local_id}",
                         "x": bev_coord["x"],
                         "y": bev_coord["y"],
                         "visibleCameras": [video_path.stem],
@@ -211,7 +228,7 @@ class RecordingProcessor:
                     # Draw debug annotation
                     if render_annotated:
                         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 220, 255), 2)
-                        label = f"{class_name} {conf:.2f} BEV:({bev_coord['x']},{bev_coord['y']})"
+                        label = f"ID:{local_id} {class_name} {conf:.2f} BEV:({bev_coord['x']},{bev_coord['y']})"
                         cv2.putText(
                             frame, label, (x1, max(18, y1 - 8)),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 220, 255), 1
@@ -252,6 +269,8 @@ class RecordingProcessor:
             },
             "summary": {
                 "total_detections": total_detections_count,
+                "unique_local_objects_tracked": len(unique_local_ids),
+                "local_ids_tracked": sorted(list(unique_local_ids)),
                 "sampled_frames_with_detections": len(detections_by_frame),
                 "saved_crops_count": len(saved_crop_files),
                 "highest_confidence": max([d["confidence"] for f in detections_by_frame for d in f["detections"]], default=0.0)
