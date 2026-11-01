@@ -15,6 +15,7 @@ import {
   getCropImage,
   streamVideo,
   seedDatabase,
+  clearAllVideos,
 } from '../controllers/api.controller.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -79,6 +80,7 @@ const router = Router();
 router.get('/health', getHealth);
 router.get('/videos', getVideos);
 router.post('/upload', uploadFields, handleUpload);
+router.delete('/videos', clearAllVideos);
 router.delete('/videos/:id', deleteVideo);
 router.delete('/target', deleteTarget);
 router.post('/detect', runDetection);
@@ -92,3 +94,4 @@ router.get('/crops/:filename', getCropImage);
 router.get('/video/:camera_id', streamVideo);
 
 export default router;
+

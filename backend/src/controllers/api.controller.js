@@ -437,3 +437,26 @@ export const seedDatabase = (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 };
+
+
+// 13. Clear All Feeds and Archive
+export const clearAllVideos = (req, res) => {
+  try {
+    const data = getMetadata();
+    data.videos.forEach((v) => {
+      const filePath = path.join(VIDEOS_DIR, v.filename);
+      if (fs.existsSync(filePath)) {
+        try { fs.unlinkSync(filePath); } catch (e) {}
+      }
+    });
+    data.videos = [];
+    saveMetadata(data);
+    db.prepare('DELETE FROM sightings').run();
+    db.prepare('DELETE FROM global_identities').run();
+    db.prepare('DELETE FROM cameras').run();
+    return res.json({ success: true, message: 'All camera streams and archive vault videos cleared.' });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+};
+

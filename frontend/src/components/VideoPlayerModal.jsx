@@ -83,7 +83,7 @@ export default function VideoPlayerModal({ video, onClose }) {
         {/* Modal Body / Video Player */}
         <div style={{ backgroundColor: '#070b14', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <video
-            src={getFullUrl(video.url)}
+            src={video.url ? getFullUrl(video.url) : `${SERVER_URL}/api/video/${video.camera_id}`}
             controls
             autoPlay
             style={{ width: '100%', maxHeight: '480px', outline: 'none' }}
@@ -129,4 +129,5 @@ export default function VideoPlayerModal({ video, onClose }) {
     </div>
   );
 }
+
 

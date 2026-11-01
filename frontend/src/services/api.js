@@ -153,3 +153,4 @@ export const seedDatabase = async () => {
   if (!res.ok) throw new Error(data.error || 'Failed to seed database');
   return data;
 };
+

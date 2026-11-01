@@ -35,7 +35,11 @@ except ModuleNotFoundError:
         for py_bin in venv_candidates:
             if py_bin.exists():
                 os.environ["_BIRDS_EYE_VENV_ATTEMPTED"] = "1"
-                os.execv(str(py_bin), [str(py_bin)] + sys.argv)
+                if os.name == "nt":
+                    import subprocess
+                    sys.exit(subprocess.call([str(py_bin)] + sys.argv))
+                else:
+                    os.execv(str(py_bin), [str(py_bin)] + sys.argv)
                 switched = True
                 break
     if not switched:
@@ -240,4 +244,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
 
