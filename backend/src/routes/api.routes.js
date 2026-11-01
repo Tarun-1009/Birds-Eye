@@ -12,6 +12,9 @@ import {
   getCameras,
   getSightings,
   getIdentities,
+  getCropImage,
+  streamVideo,
+  seedDatabase,
 } from '../controllers/api.controller.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -79,10 +82,13 @@ router.post('/upload', uploadFields, handleUpload);
 router.delete('/videos/:id', deleteVideo);
 router.delete('/target', deleteTarget);
 router.post('/detect', runDetection);
+router.post('/seed', seedDatabase);
 
-// CCTV Tracker SQLite Database Endpoints
+// CCTV Multi-Camera Tracker & Sequence Endpoints
 router.get('/cameras', getCameras);
 router.get('/sightings', getSightings);
 router.get('/identities', getIdentities);
+router.get('/crops/:filename', getCropImage);
+router.get('/video/:camera_id', streamVideo);
 
 export default router;

@@ -1,197 +1,234 @@
-import React, { useState, useEffect } from 'react';
-import Header from './components/Header';
-import VideoIngestion from './components/VideoIngestion';
+import React, { useState, useEffect, useCallback } from 'react';
+import AppHeader from './components/AppHeader';
+import MultiCameraMatrix from './components/MultiCameraMatrix';
+import SequenceExplorer from './components/SequenceExplorer';
+import UploadWorkbench from './components/UploadWorkbench';
 import StoredVideosGallery from './components/StoredVideosGallery';
-import DetectionStudio from './components/DetectionStudio';
 import VideoPlayerModal from './components/VideoPlayerModal';
 import Toast from './components/Toast';
-import { 
-  checkHealth, 
-  fetchVideosData, 
-  deleteVideoFile, 
-  deleteTargetFile 
+import {
+  checkHealth,
+  fetchCameras,
+  fetchSightings,
+  fetchIdentities,
+  fetchVideosData,
+  deleteVideoFile,
+  deleteTargetFile,
 } from './services/api';
 
 export default function App() {
-  const [videos, setVideos] = useState([]);
-  const [target, setTarget] = useState(null);
-  const [stats, setStats] = useState({ videoCount: 0, totalBytes: 0, formattedTotalSize: '0 B' });
+  // Navigation
+  const [activeTab, setActiveTab] = useState('live'); // 'live' | 'upload' | 'vault'
   const [isOnline, setIsOnline] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState('gallery'); // 'gallery' | 'detection'
+
+  // Core CCTV Data
+  const [cameras, setCameras] = useState([]);
+  const [sightings, setSightings] = useState([]);
+  const [identities, setIdentities] = useState([]);
+  const [storedVideos, setStoredVideos] = useState([]);
+  const [target, setTarget] = useState(null);
+
+  // Search & Filter State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeOrientation, setActiveOrientation] = useState('ALL');
+  const [activeEntityFilter, setActiveEntityFilter] = useState('all');
+
+  // Frame Sequence & Active Camera Seeking State
+  const [activeSightingIndex, setActiveSightingIndex] = useState(0);
+  const [seekTarget, setSeekTarget] = useState(null);
+
+  // Modals & Notifications
   const [playingVideo, setPlayingVideo] = useState(null);
   const [toasts, setToasts] = useState([]);
 
   const showToast = (message, type = 'success') => {
     const id = Date.now() + Math.random().toString(36).substring(2, 6);
-    setToasts(prev => [...prev, { id, message, type }]);
+    setToasts((prev) => [...prev, { id, message, type }]);
     setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 4000);
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4500);
   };
 
   const dismissToast = (id) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
+    setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  const loadData = async (silent = false) => {
+  // Load cameras, identities, and metadata
+  const loadCoreData = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      const [health, videosData] = await Promise.all([
+      const [healthRes, camsRes, idsRes, vidsData] = await Promise.all([
         checkHealth(),
-        fetchVideosData()
+        fetchCameras(),
+        fetchIdentities(),
+        fetchVideosData(),
       ]);
 
-      const online = health.status === 'online' || health.status === 'ok';
-      setIsOnline(online);
+      setIsOnline(healthRes.status === 'online' || healthRes.status === 'ok');
+      setCameras(camsRes || []);
+      setIdentities(idsRes || []);
 
-      if (videosData) {
-        setVideos(videosData.videos || []);
-        setTarget(videosData.target || null);
-        setStats(videosData.stats || { videoCount: 0, totalBytes: 0, formattedTotalSize: '0 B' });
-
-        if (videosData.isOffline && !silent) {
-          showToast('Could not fetch stored videos from server. Ensure backend is running.', 'error');
-        }
+      if (vidsData) {
+        setStoredVideos(vidsData.videos || []);
+        setTarget(vidsData.target || null);
       }
     } catch (err) {
+      console.error('Failed to load core surveillance data:', err);
       setIsOnline(false);
-      if (!silent) {
-        showToast('Could not fetch stored videos from server.', 'error');
-      }
     } finally {
       setIsRefreshing(false);
     }
-  };
-
-  useEffect(() => {
-    loadData(true);
   }, []);
 
+  // Fetch frame-to-frame sequence sightings whenever search query or orientation changes
+  const loadSightings = useCallback(async () => {
+    try {
+      const data = await fetchSightings({
+        search: searchQuery,
+        orientation: activeOrientation,
+        entity_type: activeEntityFilter !== 'all' ? activeEntityFilter : undefined,
+      });
+      setSightings(data || []);
+      setActiveSightingIndex(0);
+
+      // Default seek to first sighting if available
+      if (data && data.length > 0) {
+        setSeekTarget({
+          camera_id: data[0].camera_id,
+          timestamp_sec: data[0].timestamp_sec,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch sightings sequence:', err);
+    }
+  }, [searchQuery, activeOrientation, activeEntityFilter]);
+
+  // Initial load
+  useEffect(() => {
+    loadCoreData();
+  }, [loadCoreData]);
+
+  // Sightings load on filter change
+  useEffect(() => {
+    loadSightings();
+  }, [loadSightings]);
+
+  // Handle camera jump from SequenceExplorer
+  const handleSeekCamera = (cameraId, timestampSec) => {
+    setSeekTarget({
+      camera_id: cameraId,
+      timestamp_sec: timestampSec,
+    });
+  };
+
   const handleDeleteVideo = async (id, name) => {
-    if (!window.confirm(`Are you sure you want to delete "${name}"?`)) return;
+    if (!window.confirm(`Are you sure you want to delete camera feed "${name}"?`)) return;
     try {
       const res = await deleteVideoFile(id);
-      showToast(res.message || 'Video deleted.', 'success');
-      loadData(true);
+      showToast(res.message || 'Camera feed removed.', 'success');
+      loadCoreData();
+      loadSightings();
     } catch (err) {
-      showToast(err.message || 'Failed to delete video.', 'error');
+      showToast(err.message || 'Failed to remove feed.', 'error');
     }
   };
 
   const handleDeleteTarget = async () => {
-    if (!window.confirm('Are you sure you want to remove the active target reference?')) return;
+    if (!window.confirm('Remove active target reference image?')) return;
     try {
       const res = await deleteTargetFile();
       showToast(res.message || 'Target removed.', 'success');
-      loadData(true);
+      loadCoreData();
     } catch (err) {
       showToast(err.message || 'Failed to remove target.', 'error');
     }
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--bg-body)' }}>
-      {/* Header bar matching the user's prototype */}
-      <Header stats={stats} target={target} isOnline={isOnline} />
+    <div className="app-shell">
+      {/* Dark SOC Header */}
+      <AppHeader
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        cameraCount={cameras.length}
+        sightingsCount={sightings.length}
+        identitiesCount={identities.length}
+        isOnline={isOnline}
+      />
 
-      {/* Main Workbench Grid */}
-      <main style={{
-        flex: 1,
-        maxWidth: '1440px',
-        width: '100%',
-        margin: '0 auto',
-        padding: '1.75rem 2rem',
-        display: 'grid',
-        gridTemplateColumns: 'minmax(340px, 420px) minmax(0, 1fr)',
-        gap: '1.5rem',
-        alignItems: 'start'
-      }}>
-        {/* Left Column: Video & Target Ingestion */}
-        <VideoIngestion
-          onUploadSuccess={() => loadData(true)}
-          onTriggerDetection={() => setActiveTab('detection')}
-          showToast={showToast}
-        />
+      {/* Main Workspace Body */}
+      <main className="dashboard-main">
+        {activeTab === 'live' && (
+          <div className="studio-grid">
+            {/* Left Column: 2x2 CCTV Live Matrix */}
+            <div className="workbench-col">
+              <div className="workbench-toolbar">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <span className="mono" style={{ fontSize: '0.85rem', fontWeight: 800, color: '#f8fafc' }}>
+                    MULTI-CAMERA SURVEILLANCE MATRIX
+                  </span>
+                  <span className="system-tag mono">
+                    {cameras.length} CAMERAS REGISTERED
+                  </span>
+                </div>
 
-        {/* Right Column: Toggle between Stored Videos Gallery & Multi-Angle Detection Studio */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {/* View Mode Toggle Pill */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            backgroundColor: '#ffffff',
-            padding: '0.4rem 0.6rem',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--border-color)',
-            boxShadow: 'var(--shadow-sm)'
-          }}>
-            <div style={{ display: 'flex', gap: '0.4rem' }}>
-              <button
-                type="button"
-                onClick={() => setActiveTab('gallery')}
-                style={{
-                  padding: '0.45rem 1rem',
-                  borderRadius: 'var(--radius-sm)',
-                  backgroundColor: activeTab === 'gallery' ? 'var(--header-bg)' : 'transparent',
-                  color: activeTab === 'gallery' ? '#ffffff' : '#64748b',
-                  border: 'none',
-                  fontSize: '0.82rem',
-                  fontWeight: '700',
-                  cursor: 'pointer'
-                }}
-              >
-                Stored Videos Vault ({videos.length})
-              </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span className="mono" style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                    Re-ID Rotation Match: <strong style={{ color: '#10b981' }}>TORSO 70% + BODY 30%</strong>
+                  </span>
+                </div>
+              </div>
 
-              <button
-                type="button"
-                onClick={() => setActiveTab('detection')}
-                style={{
-                  padding: '0.45rem 1rem',
-                  borderRadius: 'var(--radius-sm)',
-                  backgroundColor: activeTab === 'detection' ? 'var(--primary)' : 'transparent',
-                  color: activeTab === 'detection' ? '#ffffff' : '#64748b',
-                  border: 'none',
-                  fontSize: '0.82rem',
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}
-              >
-                Multi-Angle Detection Studio
-              </button>
+              {/* 2x2 Video Stream Players */}
+              <MultiCameraMatrix
+                cameras={cameras}
+                seekTarget={seekTarget}
+              />
             </div>
 
-            <span style={{ fontSize: '0.72rem', color: '#94a3b8', paddingRight: '0.5rem' }}>
-              Multi-Camera Object Tracking
-            </span>
-          </div>
-
-          {/* Active View */}
-          {activeTab === 'detection' ? (
-            <DetectionStudio
-              videos={videos}
-              target={target}
-              onClose={() => setActiveTab('gallery')}
-              showToast={showToast}
+            {/* Right Column: Unified Search, Orientation Filters, Re-ID Target Card & Frame Sequence Stepper */}
+            <SequenceExplorer
+              sightings={sightings}
+              identities={identities}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              activeOrientation={activeOrientation}
+              onOrientationChange={setActiveOrientation}
+              activeEntityFilter={activeEntityFilter}
+              onEntityFilterChange={setActiveEntityFilter}
+              activeSightingIndex={activeSightingIndex}
+              onSelectSightingIndex={setActiveSightingIndex}
+              onSeekCamera={handleSeekCamera}
             />
-          ) : (
+          </div>
+        )}
+
+        {activeTab === 'upload' && (
+          <UploadWorkbench
+            onUploadComplete={() => {
+              loadCoreData();
+              loadSightings();
+              setActiveTab('live');
+            }}
+            showToast={showToast}
+          />
+        )}
+
+        {activeTab === 'vault' && (
+          <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
             <StoredVideosGallery
-              videos={videos}
+              videos={storedVideos}
               target={target}
-              onRefresh={() => loadData(false)}
+              onRefresh={loadCoreData}
               onPlayVideo={(v) => setPlayingVideo(v)}
               onDeleteVideo={handleDeleteVideo}
               onDeleteTarget={handleDeleteTarget}
-              onLaunchDetection={() => setActiveTab('detection')}
+              onLaunchDetection={() => setActiveTab('live')}
               isRefreshing={isRefreshing}
             />
-          )}
-        </div>
+          </div>
+        )}
       </main>
 
       {/* Video Player Modal */}

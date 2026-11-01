@@ -2,6 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import db from '../db/db.js';
+import { config } from '../config/index.js';
+import { seedMockData } from '../db/seedMockData.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,7 +14,7 @@ const TARGETS_DIR = path.join(UPLOADS_DIR, 'targets');
 const METADATA_FILE = path.join(UPLOADS_DIR, 'metadata.json');
 
 // Ensure upload directories exist
-[UPLOADS_DIR, VIDEOS_DIR, TARGETS_DIR].forEach((dir) => {
+[UPLOADS_DIR, VIDEOS_DIR, TARGETS_DIR, config.videosDir, config.cropsDir].forEach((dir) => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -53,13 +55,13 @@ export function saveMetadata(data) {
 export const getHealth = (req, res) => {
   res.status(200).json({
     status: 'online',
-    system: 'Birds-Eye Multi-Angle Video & Detection Service',
+    system: 'Birds-Eye Multi-Camera CCTV Tracking Platform',
     uptime: Math.floor(process.uptime()),
     timestamp: new Date().toISOString(),
   });
 };
 
-// 2. Fetch all stored videos, target, and storage metrics
+// 2. Fetch Stored Videos
 export const getVideos = (req, res) => {
   const data = getMetadata();
   const totalBytes =
@@ -77,7 +79,7 @@ export const getVideos = (req, res) => {
   });
 };
 
-// 3. Upload CCTV videos and optional target photo
+// 3. Multi-Video Upload Handler (also registers cameras in SQLite)
 export const handleUpload = (req, res) => {
   const videoFiles = req.files?.videos || [];
   const targetFile = req.files?.target?.[0] || null;
@@ -97,38 +99,55 @@ export const handleUpload = (req, res) => {
   const currentData = getMetadata();
   const newVideos = [];
 
-  // Process uploaded videos
+  // Register each uploaded video in metadata and cameras table
+  const insertCameraStmt = db.prepare(`
+    INSERT OR REPLACE INTO cameras (camera_id, name, video_path, location, status)
+    VALUES (?, ?, ?, ?, 'ONLINE')
+  `);
+
   videoFiles.forEach((file, index) => {
+    const existingCamCount = db.prepare('SELECT COUNT(*) as count FROM cameras').get().count;
+    const camId = `CAM-${String(existingCamCount + index + 1).padStart(2, '0')}`;
     const cameraName =
       cameraNames && cameraNames[index]
         ? cameraNames[index].trim()
-        : `Camera ${currentData.videos.length + index + 1}`;
+        : `Camera ${existingCamCount + index + 1}`;
+
+    // Also copy / link into data/videos/ if not already there
+    const dataVideoPath = path.join(config.videosDir, file.filename);
+    try {
+      if (!fs.existsSync(dataVideoPath)) {
+        fs.copyFileSync(file.path, dataVideoPath);
+      }
+    } catch (e) {
+      console.warn('Could not mirror uploaded video to data/videos:', e.message);
+    }
+
+    const relativeVideoPath = `data/videos/${file.filename}`;
+    insertCameraStmt.run(camId, cameraName, relativeVideoPath, cameraName);
 
     const videoRecord = {
-      id: 'vid_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8),
+      id: camId,
       filename: file.filename,
       originalName: file.originalname,
-      cameraName: cameraName || file.originalname,
+      cameraName,
       sizeBytes: file.size,
       formattedSize: formatBytes(file.size),
       mimeType: file.mimetype,
       uploadedAt: new Date().toISOString(),
       url: `/uploads/videos/${file.filename}`,
+      streamUrl: `/api/video/${camId}`,
     };
     newVideos.push(videoRecord);
     currentData.videos.push(videoRecord);
   });
 
-  // Process uploaded target photo
+  // Process uploaded target reference photo
   if (targetFile) {
     if (currentData.target && currentData.target.filename) {
       const oldPath = path.join(TARGETS_DIR, currentData.target.filename);
       if (fs.existsSync(oldPath)) {
-        try {
-          fs.unlinkSync(oldPath);
-        } catch (e) {
-          /* ignore */
-        }
+        try { fs.unlinkSync(oldPath); } catch (e) { /* ignore */ }
       }
     }
 
@@ -148,42 +167,35 @@ export const handleUpload = (req, res) => {
 
   return res.status(201).json({
     success: true,
-    message: `Successfully uploaded ${newVideos.length} video(s)${
-      targetFile ? ' and 1 target reference' : ''
-    }.`,
+    message: `Successfully uploaded ${newVideos.length} camera feed(s)${targetFile ? ' and 1 target reference' : ''}.`,
     uploadedVideos: newVideos,
     target: currentData.target,
   });
 };
 
-// 4. Delete a stored video
+// 4. Delete video
 export const deleteVideo = (req, res) => {
   const { id } = req.params;
   const data = getMetadata();
   const index = data.videos.findIndex((v) => v.id === id);
 
-  if (index === -1) {
-    return res.status(404).json({ success: false, error: 'Video not found' });
-  }
-
-  const [removed] = data.videos.splice(index, 1);
-  const filePath = path.join(VIDEOS_DIR, removed.filename);
-  if (fs.existsSync(filePath)) {
-    try {
-      fs.unlinkSync(filePath);
-    } catch (err) {
-      console.error(`Failed to delete video file ${removed.filename}:`, err.message);
+  if (index !== -1) {
+    const [removed] = data.videos.splice(index, 1);
+    const filePath = path.join(VIDEOS_DIR, removed.filename);
+    if (fs.existsSync(filePath)) {
+      try { fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
     }
+    saveMetadata(data);
   }
 
-  saveMetadata(data);
-  return res.json({
-    success: true,
-    message: `Video '${removed.originalName}' deleted.`,
-  });
+  // Also remove from SQLite cameras & associated sightings
+  db.prepare('DELETE FROM cameras WHERE camera_id = ?').run(id);
+  db.prepare('DELETE FROM sightings WHERE camera_id = ?').run(id);
+
+  return res.json({ success: true, message: `Camera feed '${id}' deleted.` });
 };
 
-// 5. Remove active target photo
+// 5. Delete Target
 export const deleteTarget = (req, res) => {
   const data = getMetadata();
   if (!data.target) {
@@ -192,11 +204,7 @@ export const deleteTarget = (req, res) => {
 
   const filePath = path.join(TARGETS_DIR, data.target.filename);
   if (fs.existsSync(filePath)) {
-    try {
-      fs.unlinkSync(filePath);
-    } catch (err) {
-      console.error(`Failed to delete target file:`, err.message);
-    }
+    try { fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
   }
 
   data.target = null;
@@ -204,137 +212,227 @@ export const deleteTarget = (req, res) => {
   return res.json({ success: true, message: 'Target photo removed.' });
 };
 
-// 6. Multi-Angle Object / Person Detection Pipeline
-export const runDetection = (req, res) => {
-  const { targetType = 'Person', selectedClass = 'Person' } = req.body;
-  const data = getMetadata();
-
-  if (data.videos.length === 0) {
-    return res.status(400).json({
-      success: false,
-      error: 'Please upload at least one video to run detection.',
-    });
-  }
-
-  // Generate multi-angle detection detections and bird's eye projected trajectory
-  const cameraDetections = data.videos.map((vid, index) => {
-    const angleOffset = index * 2;
-    return {
-      videoId: vid.id,
-      cameraName: vid.cameraName,
-      videoUrl: vid.url,
-      detectionsCount: 4 + (index % 3),
-      detections: [
-        {
-          timestamp: '00:0' + (2 + angleOffset),
-          timeSec: 2 + angleOffset,
-          confidence: (0.92 + (index * 0.02) % 0.07).toFixed(2),
-          bbox: { x: 25 + index * 12, y: 35, width: 80, height: 160 },
-          status: 'Target Spotted',
-        },
-        {
-          timestamp: '00:0' + (6 + angleOffset),
-          timeSec: 6 + angleOffset,
-          confidence: (0.95 - (index * 0.01) % 0.05).toFixed(2),
-          bbox: { x: 40 + index * 10, y: 38, width: 85, height: 165 },
-          status: 'Tracking Active',
-        },
-        {
-          timestamp: '00:1' + (0 + angleOffset),
-          timeSec: 10 + angleOffset,
-          confidence: (0.97 - (index * 0.03) % 0.06).toFixed(2),
-          bbox: { x: 55 + index * 8, y: 42, width: 90, height: 170 },
-          status: 'High Re-ID Match',
-        },
-      ],
-    };
-  });
-
-  // Top-Down Bird's Eye View Trajectory synthesized from multiple camera angles
-  const birdsEyeTrajectory = [
-    { t: 0, x: 22, y: 30, visibleCameras: [data.videos[0]?.cameraName || 'Cam 1'] },
-    { t: 3, x: 35, y: 42, visibleCameras: [data.videos[0]?.cameraName, data.videos[1]?.cameraName].filter(Boolean) },
-    { t: 6, x: 48, y: 55, visibleCameras: [data.videos[0]?.cameraName, data.videos[1]?.cameraName, data.videos[2]?.cameraName].filter(Boolean) },
-    { t: 9, x: 62, y: 64, visibleCameras: [data.videos[1]?.cameraName, data.videos[2]?.cameraName].filter(Boolean) },
-    { t: 12, x: 74, y: 72, visibleCameras: [data.videos[data.videos.length - 1]?.cameraName || 'Cam End'] },
-  ];
-
-  return res.json({
-    success: true,
-    target: {
-      type: targetType,
-      class: selectedClass,
-      referencePhoto: data.target ? data.target.url : null,
-      reIdModel: 'ResNet50-ReID + Homography Projection',
-    },
-    cameraFeedsCount: data.videos.length,
-    cameraDetections,
-    birdsEyeTrajectory,
-    summary: {
-      totalSightings: cameraDetections.reduce((sum, c) => sum + c.detections.length, 0),
-      highestConfidence: '97.2%',
-      coverageQuality: 'Optimal Multi-Angle Triangulation',
-      detectedDuration: '14.8 seconds',
-    },
-  });
-};
-
-// 7. SQLite Cameras Endpoint
+// 6. Camera Registry (GET /api/cameras)
 export const getCameras = (req, res) => {
   try {
-    const cameras = db.prepare('SELECT * FROM cameras ORDER BY id ASC').all();
-    res.json({ success: true, count: cameras.length, cameras });
+    const cameras = db.prepare('SELECT * FROM cameras ORDER BY camera_id ASC').all();
+    res.json(cameras);
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ error: err.message });
   }
 };
 
-// 8. SQLite Sightings Endpoint (supports orientation filter: FRONT, BACK, LEFT, RIGHT)
+// 7. Sighting Search & Frame-to-Frame Sequence Query (GET /api/sightings)
 export const getSightings = (req, res) => {
   try {
-    const { orientation, camera_id, global_identity_id, limit = 50 } = req.query;
+    const { global_id, orientation, camera_id, search, q, entity_type, limit = 100 } = req.query;
+    const searchTerm = (search || q || '').trim();
+
     let query = `
-      SELECT s.*, c.name as camera_name, g.label as target_label
+      SELECT 
+        s.*,
+        c.name as camera_name,
+        g.label as identity_label,
+        g.dominant_color
       FROM sightings s
-      LEFT JOIN cameras c ON s.camera_id = c.id
-      LEFT JOIN global_identities g ON s.global_identity_id = g.id
+      LEFT JOIN cameras c ON s.camera_id = c.camera_id
+      LEFT JOIN global_identities g ON s.global_id = g.global_id
       WHERE 1=1
     `;
     const params = [];
 
-    if (orientation) {
-      query += ' AND s.orientation = ?';
-      params.push(orientation.toUpperCase());
+    // Filter by specific Global ID
+    if (global_id) {
+      query += ' AND s.global_id = ?';
+      params.push(global_id);
     }
+
+    // Filter by Entity Type (person or object)
+    if (entity_type) {
+      query += ' AND s.entity_type = ?';
+      params.push(entity_type.toLowerCase());
+    }
+
+    // Filter by Orientation (ALL, FRONT, BACK, LEFT, RIGHT, SIDE)
+    if (orientation && orientation.toUpperCase() !== 'ALL') {
+      const ori = orientation.toUpperCase();
+      if (ori === 'SIDE') {
+        query += " AND s.orientation IN ('LEFT', 'RIGHT')";
+      } else {
+        query += ' AND s.orientation = ?';
+        params.push(ori);
+      }
+    }
+
+    // Filter by Camera ID
     if (camera_id) {
       query += ' AND s.camera_id = ?';
       params.push(camera_id);
     }
-    if (global_identity_id) {
-      query += ' AND s.global_identity_id = ?';
-      params.push(global_identity_id);
+
+    // General text search (matches global_id, label, entity_type, carried_items, camera_name)
+    if (searchTerm) {
+      query += ` AND (
+        s.global_id LIKE ? 
+        OR g.label LIKE ? 
+        OR s.entity_type LIKE ? 
+        OR s.carried_items LIKE ? 
+        OR c.name LIKE ?
+      )`;
+      const pattern = `%${searchTerm}%`;
+      params.push(pattern, pattern, pattern, pattern, pattern);
     }
 
-    query += ' ORDER BY s.timestamp DESC LIMIT ?';
+    // Sort chronologically by timestamp and frame to preserve frame-to-frame sequence
+    query += ' ORDER BY s.timestamp_sec ASC, s.frame_index ASC LIMIT ?';
     params.push(Number(limit));
 
     const sightings = db.prepare(query).all(...params);
+    res.json(sightings);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// 8. Identity Registry (GET /api/identities)
+export const getIdentities = (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        g.*,
+        (SELECT s.crop_path FROM sightings s WHERE s.global_id = g.global_id ORDER BY s.timestamp_sec ASC LIMIT 1) as initial_crop_path,
+        (SELECT COUNT(*) FROM sightings s WHERE s.global_id = g.global_id) as total_sightings,
+        (SELECT GROUP_CONCAT(DISTINCT s.camera_id) FROM sightings s WHERE s.global_id = g.global_id) as observed_cameras
+      FROM global_identities g
+      ORDER BY g.first_seen_timestamp ASC
+    `;
+    const identities = db.prepare(query).all();
+    res.json(identities);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// 9. Static Crop Image Serving (GET /api/crops/:filename)
+export const getCropImage = (req, res) => {
+  try {
+    const { filename } = req.params;
+    const cleanFilename = path.basename(filename);
+    
+    // Look in data/crops/ first, then uploads/
+    const candidatePaths = [
+      path.resolve(config.cropsDir, cleanFilename),
+      path.resolve(TARGETS_DIR, cleanFilename),
+      path.resolve(__dirname, '../../../data/crops', cleanFilename),
+    ];
+
+    const cropPath = candidatePaths.find((p) => fs.existsSync(p));
+
+    if (!cropPath) {
+      return res.status(404).json({ error: `Crop image '${cleanFilename}' not found` });
+    }
+
+    res.sendFile(cropPath);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// 10. HTTP 206 Partial Content Range Video Seeking (GET /api/video/:camera_id)
+export const streamVideo = (req, res) => {
+  const { camera_id } = req.params;
+  const camera = db.prepare('SELECT * FROM cameras WHERE camera_id = ?').get(camera_id);
+
+  if (!camera) {
+    return res.status(404).json({ error: `Camera '${camera_id}' not found` });
+  }
+
+  // Resolve video path
+  const candidatePaths = [
+    path.resolve(config.dataDir, camera.video_path),
+    path.resolve(config.videosDir, path.basename(camera.video_path)),
+    path.resolve(VIDEOS_DIR, path.basename(camera.video_path)),
+    path.resolve(__dirname, '../../../', camera.video_path),
+  ];
+
+  const videoPath = candidatePaths.find((p) => fs.existsSync(p));
+
+  if (!videoPath) {
+    return res.status(404).json({ error: `Video file not found for camera ${camera_id}` });
+  }
+
+  const stat = fs.statSync(videoPath);
+  const fileSize = stat.size;
+  const range = req.headers.range;
+
+  if (range) {
+    const parts = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+    if (start >= fileSize) {
+      res.status(416).send(`Requested range not satisfiable\n${start} >= ${fileSize}`);
+      return;
+    }
+
+    const chunksize = end - start + 1;
+    const file = fs.createReadStream(videoPath, { start, end });
+    const head = {
+      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': chunksize,
+      'Content-Type': 'video/mp4',
+    };
+
+    res.writeHead(206, head);
+    file.pipe(res);
+  } else {
+    const head = {
+      'Content-Length': fileSize,
+      'Content-Type': 'video/mp4',
+      'Accept-Ranges': 'bytes',
+    };
+    res.writeHead(200, head);
+    fs.createReadStream(videoPath).pipe(res);
+  }
+};
+
+// 11. Run Multi-Angle Detection Pipeline
+export const runDetection = (req, res) => {
+  try {
+    const sightings = db.prepare('SELECT * FROM sightings ORDER BY timestamp_sec ASC LIMIT 50').all();
+    const identities = db.prepare('SELECT * FROM global_identities ORDER BY first_seen_timestamp ASC').all();
+    const cameras = db.prepare('SELECT * FROM cameras ORDER BY camera_id ASC').all();
+
     res.json({
       success: true,
-      count: sightings.length,
-      filters: { orientation, camera_id, global_identity_id },
+      message: 'Detection sequence query successful',
+      camerasCount: cameras.length,
+      sightingsCount: sightings.length,
+      identitiesCount: identities.length,
       sightings,
+      identities,
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 };
 
-// 9. SQLite Global Identities Endpoint
-export const getIdentities = (req, res) => {
+// 12. Seed Mock Surveillance Data (POST /api/seed)
+export const seedDatabase = (req, res) => {
   try {
-    const identities = db.prepare('SELECT * FROM global_identities ORDER BY created_at DESC').all();
-    res.json({ success: true, count: identities.length, identities });
+    seedMockData(db);
+    const cameras = db.prepare('SELECT COUNT(*) as count FROM cameras').get().count;
+    const identities = db.prepare('SELECT COUNT(*) as count FROM global_identities').get().count;
+    const sightings = db.prepare('SELECT COUNT(*) as count FROM sightings').get().count;
+
+    res.json({
+      success: true,
+      message: `Database seeded successfully: ${cameras} cameras, ${identities} identities, ${sightings} frame sequence sightings.`,
+      camerasCount: cameras,
+      identitiesCount: identities,
+      sightingsCount: sightings,
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

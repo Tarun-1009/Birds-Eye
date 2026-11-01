@@ -1,18 +1,24 @@
 import Database from 'better-sqlite3';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { config } from '../config/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const dbPath = config.dbPath || path.resolve(__dirname, '../../cctv_tracker.db');
-
 export function getDatabase(customPath) {
-  const targetPath = customPath || dbPath;
+  const targetPath = customPath || config.dbPath || path.resolve(__dirname, '../../../data/cctv_tracker.db');
+  
+  // Ensure target directory exists
+  const parentDir = path.dirname(targetPath);
+  if (!fs.existsSync(parentDir)) {
+    fs.mkdirSync(parentDir, { recursive: true });
+  }
+
   const db = new Database(targetPath);
   
-  // Pragmas for performance and referential integrity
+  // WAL mode for non-blocking concurrent reads and writes
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   
