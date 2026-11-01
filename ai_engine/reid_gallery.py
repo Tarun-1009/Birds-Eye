@@ -1,10 +1,11 @@
 """
-In-Memory Multi-Orientation Re-ID Gallery.
+Multi-Orientation Re-ID Gallery for Cross-Camera Tracking.
 Maintains feature vectors categorized under orientation slots: front, back, side, and torso.
 Executes cross-camera matching using angle-adaptive cosine similarity:
 - Same/adjacent angles: cosine similarity on whole-body vectors
-- Opposite angles (180° flip FRONT <-> BACK): 70% weighted on torso crop vector
-- Threshold > 0.75 assigns existing Global ID, otherwise registers a new Global ID.
+- Opposite angles (180° flip FRONT <-> BACK): 70% weighted on torso crop vector + 30% whole body
+- Threshold >= 0.73 assigns existing Global ID, otherwise registers a new Global ID.
+- Incorporates carried items (accessories) for lookalike disambiguation.
 """
 from typing import Dict, List, Any, Optional, Tuple, Set
 import numpy as np
@@ -16,11 +17,11 @@ class ReIDGallery:
     """
     In-memory Re-ID gallery categorized by multi-orientation feature slots.
     """
-    SIMILARITY_THRESHOLD = 0.75
+    SIMILARITY_THRESHOLD = 0.73
     OPPOSITE_TORSO_WEIGHT = 0.70
     OPPOSITE_BODY_WEIGHT = 0.30
 
-    def __init__(self, similarity_threshold: float = 0.75):
+    def __init__(self, similarity_threshold: float = 0.73):
         self.similarity_threshold = similarity_threshold
         # In-memory dictionary gallery
         self.gallery: Dict[str, Dict[str, Any]] = {}
@@ -77,28 +78,27 @@ class ReIDGallery:
         Matches a person across cameras:
         - If comparing same/adjacent angles: compute cosine similarity of whole-body vectors.
         - If comparing opposite angles (180° flip from FRONT to BACK): compute cosine similarity
-          predominantly on the torso crop vector (70% weight).
-        - If similarity exceeds 0.75, assign the existing Global ID; otherwise, register a new Global ID.
+          predominantly on the torso crop vector (70% weight) + body vector (30% weight).
+        - Applies lookalike disambiguation based on carried items.
+        - If similarity exceeds threshold (default: 0.73), assign existing Global ID; otherwise register new.
 
         Returns: (global_id, match_confidence, is_new_identity)
         """
         ts = timestamp or time.strftime("%Y-%m-%d %H:%M:%S")
         cand_slot = self.map_orientation_slot(orientation)
-        cand_orient = orientation.upper().strip()
+        cand_items_set = set(carried_items or [])
 
         best_global_id = None
         best_sim = -1.0
 
         for gid, record in self.gallery.items():
             slots = record["orientations"]
-            
-            # Determine match against all existing orientations stored for this identity
             id_scores = []
-            
+
             for stored_slot, stored_vecs in slots.items():
                 if not stored_vecs or stored_slot == "torso":
                     continue
-                
+
                 # Check for 180° opposite flip: FRONT <-> BACK
                 is_opposite = (
                     (cand_slot == "front" and stored_slot == "back") or
@@ -123,12 +123,26 @@ class ReIDGallery:
                     id_scores.append(body_sim)
 
             if id_scores:
-                candidate_max_sim = max(id_scores)
-                if candidate_max_sim > best_sim:
-                    best_sim = candidate_max_sim
+                visual_sim = max(id_scores)
+
+                # Lookalike disambiguation via carried items
+                # If both have the same item (e.g. backpack): small boost (+0.03)
+                # If one has a distinct item (e.g. backpack) and the other doesn't: penalty (-0.06)
+                stored_items = record["carried_items"]
+                item_adj = 0.0
+                if cand_items_set and stored_items:
+                    if cand_items_set.intersection(stored_items):
+                        item_adj = 0.03
+                elif (cand_items_set and not stored_items) or (stored_items and not cand_items_set):
+                    item_adj = -0.06
+
+                final_sim = max(0.0, min(1.0, visual_sim + item_adj))
+
+                if final_sim > best_sim:
+                    best_sim = final_sim
                     best_global_id = gid
 
-        # Decision threshold: 0.75
+        # Decision threshold: 0.73
         if best_global_id and best_sim >= self.similarity_threshold:
             # Assign existing Global ID
             target_record = self.gallery[best_global_id]
@@ -137,7 +151,7 @@ class ReIDGallery:
             target_record["total_sightings"] += 1
             if carried_items:
                 target_record["carried_items"].update(carried_items)
-            
+
             # Update feature slots (keep up to 15 representative vectors per slot)
             if len(target_record["orientations"][cand_slot]) < 15:
                 target_record["orientations"][cand_slot].append(body_vector)

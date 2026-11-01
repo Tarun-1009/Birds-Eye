@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-11-01 19:33:05",
+  "metrics": {
+    "avg_intra_person_similarity": 0.849,
+    "min_intra_person_similarity": 0.6616,
+    "avg_inter_person_similarity": 0.7063,
+    "max_inter_person_similarity": 0.8185,
+    "separation_margin": 0.1427,
+    "rotation_180_similarity": 0.803,
+    "rotation_180_passed": true,
+    "pose_orientation_accuracy_pct": 100.0,
+    "overall_composite_accuracy_pct": 89.9
+  },
+  "tests": []
+}

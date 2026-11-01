@@ -93,8 +93,10 @@ export default function MultiCameraMatrix({ cameras = [], seekTarget }) {
                 <Video size={14} color="#60a5fa" />
                 <span>{cam.name || camId}</span>
               </div>
-              <div className="hud-status-badge mono">
-                LIVE STREAMING | AI ACTIVE
+              <div className="hud-status-badge mono" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ color: '#ef4444', fontWeight: 800 }}>● REC</span>
+                <span style={{ color: '#64748b' }}>&bull;</span>
+                <span>1080p @ 25FPS</span>
               </div>
             </div>
 
@@ -157,3 +159,4 @@ export default function MultiCameraMatrix({ cameras = [], seekTarget }) {
     </div>
   );
 }
+

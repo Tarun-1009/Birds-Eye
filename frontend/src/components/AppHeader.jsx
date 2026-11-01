@@ -1,5 +1,5 @@
 import React from 'react';
-import { Camera, Radio, UploadCloud, Film, Database, Sparkles, Layers } from 'lucide-react';
+import { Camera, Radio, UploadCloud, Film, Database, Layers, CheckCircle2 } from 'lucide-react';
 
 export default function AppHeader({
   activeTab,
@@ -11,18 +11,18 @@ export default function AppHeader({
 }) {
   return (
     <header className="app-header">
-      {/* Brand Logo & System Status */}
+      {/* Brand & Station Header */}
       <div className="header-brand">
         <div className="brand-icon-badge">
-          <Camera size={22} />
+          <Camera size={20} />
         </div>
         <div>
           <div className="brand-title">
-            <span>BIRD'S-EYE VIEW</span>
-            <span className="system-tag mono">WAL MODE</span>
+            <span>BIRD'S-EYE VMS</span>
+            <span className="system-tag mono">STATION 01</span>
           </div>
           <p style={{ fontSize: '0.72rem', color: '#64748b', margin: 0 }}>
-            Multi-Camera CCTV Tracking &amp; Re-Identification
+            Enterprise Multi-Camera Surveillance &amp; Target Tracking
           </p>
         </div>
       </div>
@@ -34,7 +34,7 @@ export default function AppHeader({
           onClick={() => onTabChange('live')}
         >
           <Layers size={14} />
-          <span>Live Surveillance Matrix</span>
+          <span>Surveillance Matrix</span>
         </button>
 
         <button
@@ -42,7 +42,7 @@ export default function AppHeader({
           onClick={() => onTabChange('upload')}
         >
           <UploadCloud size={14} />
-          <span>Upload CCTV Feeds</span>
+          <span>Channel Ingestion</span>
         </button>
 
         <button
@@ -50,21 +50,21 @@ export default function AppHeader({
           onClick={() => onTabChange('vault')}
         >
           <Film size={14} />
-          <span>Stored Feeds ({cameraCount})</span>
+          <span>Archive Vault ({cameraCount})</span>
         </button>
       </nav>
 
-      {/* Status & Metrics Strip */}
+      {/* Connection & Telemetry Counters */}
       <div className="header-status-pills">
         <div className="live-pill">
           <span className="live-dot" />
-          <span className="mono">{isOnline ? 'AI ENGINE ONLINE' : 'OFFLINE'}</span>
+          <span className="mono">{isOnline ? 'SYSTEM CONNECTED' : 'DISCONNECTED'}</span>
         </div>
 
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '0.5rem',
+          gap: '0.6rem',
           backgroundColor: 'rgba(15, 23, 42, 0.8)',
           border: '1px solid #1e293b',
           borderRadius: 'var(--radius-md)',
@@ -72,9 +72,9 @@ export default function AppHeader({
           fontSize: '0.75rem',
           color: '#94a3b8'
         }} className="mono">
-          <span>Sightings: <strong style={{ color: '#60a5fa' }}>{sightingsCount}</strong></span>
+          <span>Detections: <strong style={{ color: '#60a5fa' }}>{sightingsCount}</strong></span>
           <span style={{ color: '#334155' }}>|</span>
-          <span>Identities: <strong style={{ color: '#10b981' }}>{identitiesCount}</strong></span>
+          <span>Subjects: <strong style={{ color: '#10b981' }}>{identitiesCount}</strong></span>
         </div>
       </div>
     </header>

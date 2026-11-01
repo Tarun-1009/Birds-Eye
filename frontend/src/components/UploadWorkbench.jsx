@@ -5,7 +5,6 @@ import {
   User,
   X,
   CheckCircle2,
-  Sparkles,
   Camera,
   Play,
   RotateCcw,
@@ -50,7 +49,7 @@ export default function UploadWorkbench({ onUploadComplete, showToast }) {
     setStagedVideos((prev) => {
       const combined = [...prev, ...validFiles];
       const newNames = combined.map(
-        (_, idx) => cameraNames[idx] || `Camera ${idx + 1} (${idx === 0 ? 'Courtyard' : idx === 1 ? 'Gate' : idx === 2 ? 'Corridor' : 'Plaza'})`
+        (_, idx) => cameraNames[idx] || `CAM-0${idx + 1} (${idx === 0 ? 'Courtyard' : idx === 1 ? 'Gate' : idx === 2 ? 'Corridor' : 'Plaza'})`
       );
       setCameraNames(newNames);
       return combined;
@@ -103,7 +102,7 @@ export default function UploadWorkbench({ onUploadComplete, showToast }) {
         setUploadProgress(percent);
       });
 
-      showToast(res.message || 'Videos uploaded and registered in SQLite cameras table!', 'success');
+      showToast(res.message || 'Videos uploaded and registered in surveillance registry.', 'success');
       setStagedVideos([]);
       setCameraNames([]);
       removeStagedTarget();
@@ -119,7 +118,7 @@ export default function UploadWorkbench({ onUploadComplete, showToast }) {
     setIsSeeding(true);
     try {
       const res = await seedDatabase();
-      showToast(res.message || 'Database seeded with 4 cameras, identities & sightings!', 'success');
+      showToast(res.message || 'Reference dataset loaded: 4 cameras, identities & sightings synced.', 'success');
       if (onUploadComplete) onUploadComplete();
     } catch (err) {
       showToast(err.message || 'Failed to seed database.', 'error');
@@ -141,11 +140,11 @@ export default function UploadWorkbench({ onUploadComplete, showToast }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
             <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff', marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <UploadCloud size={22} color="var(--accent-blue)" />
-              <span>Multi-Camera Surveillance Feed Ingestion</span>
+              <UploadCloud size={20} color="var(--accent-blue)" />
+              <span>Multi-Camera Video Feed Ingestion</span>
             </h2>
             <p style={{ fontSize: '0.85rem', color: '#94a3b8', lineHeight: 1.5 }}>
-              Upload recordings from multiple CCTV cameras simultaneously. Each recording is ingested, assigned a camera identity in SQLite, and prepared for frame-to-frame sequence tracking, rotation-invariant matching, and object search.
+              Ingest multiple surveillance camera streams simultaneously. Recordings are indexed with camera identities, processed for frame-to-frame sequence search, and cross-matched for multi-view re-identification.
             </p>
           </div>
 
@@ -154,10 +153,10 @@ export default function UploadWorkbench({ onUploadComplete, showToast }) {
             disabled={isSeeding}
             className="filter-chip-btn"
             style={{ padding: '0.55rem 1.1rem', borderColor: '#3b82f6', color: '#60a5fa' }}
-            title="Load ready-to-test cameras, 180° rotation sequences, and objects into SQLite"
+            title="Load calibrated 4-camera reference dataset"
           >
             <RotateCcw size={14} className={isSeeding ? 'spin' : ''} />
-            <span className="mono">{isSeeding ? 'Seeding DB...' : 'Reset & Seed 4-Cam Demo'}</span>
+            <span className="mono">{isSeeding ? 'Syncing...' : 'Load Reference Dataset'}</span>
           </button>
         </div>
       </div>
@@ -176,7 +175,7 @@ export default function UploadWorkbench({ onUploadComplete, showToast }) {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span className="mono" style={{ fontSize: '0.8rem', fontWeight: 700, color: '#94a3b8' }}>
-              STEP 1: SELECT MULTIPLE CAMERA RECORDINGS
+              CAMERA INPUT FEEDS
             </span>
             <span className="system-tag mono">
               {stagedVideos.length} Staged
@@ -205,12 +204,12 @@ export default function UploadWorkbench({ onUploadComplete, showToast }) {
               accept="video/mp4,video/avi,video/quicktime,video/x-matroska,video/webm"
               style={{ display: 'none' }}
             />
-            <Film size={36} color="var(--accent-blue)" style={{ margin: '0 auto 0.75rem auto' }} />
+            <Film size={34} color="var(--accent-blue)" style={{ margin: '0 auto 0.75rem auto' }} />
             <p style={{ fontSize: '0.95rem', fontWeight: 700, color: '#f8fafc', marginBottom: '0.25rem' }}>
               Drag &amp; drop video files here, or click to browse
             </p>
             <p className="mono" style={{ fontSize: '0.75rem', color: '#64748b' }}>
-              Supports MP4, AVI, MOV, MKV &bull; Multiple angles supported simultaneously
+              Supports MP4, AVI, MOV, MKV &bull; Multi-channel synchronization
             </p>
           </div>
 
@@ -218,7 +217,7 @@ export default function UploadWorkbench({ onUploadComplete, showToast }) {
           {stagedVideos.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem' }}>
               <span className="mono" style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                CAMERA ASSIGNMENT:
+                CHANNEL ASSIGNMENT:
               </span>
               {stagedVideos.map((video, idx) => (
                 <div
@@ -238,7 +237,7 @@ export default function UploadWorkbench({ onUploadComplete, showToast }) {
                     type="text"
                     value={cameraNames[idx] || ''}
                     onChange={(e) => updateCameraName(idx, e.target.value)}
-                    placeholder={`Camera ${idx + 1} Name/Location`}
+                    placeholder={`CAM-0${idx + 1} Location / Description`}
                     className="unified-search-input mono"
                     style={{ flex: 1, padding: '0.35rem 0.6rem', fontSize: '0.8rem' }}
                   />
@@ -270,7 +269,7 @@ export default function UploadWorkbench({ onUploadComplete, showToast }) {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span className="mono" style={{ fontSize: '0.8rem', fontWeight: 700, color: '#94a3b8' }}>
-              STEP 2: TARGET REFERENCE (OPTIONAL)
+              TARGET REFERENCE (OPTIONAL)
             </span>
           </div>
 
@@ -332,12 +331,12 @@ export default function UploadWorkbench({ onUploadComplete, showToast }) {
               </div>
             ) : (
               <>
-                <User size={30} color="#64748b" style={{ marginBottom: '0.5rem' }} />
+                <User size={28} color="#64748b" style={{ marginBottom: '0.5rem' }} />
                 <p style={{ fontSize: '0.82rem', fontWeight: 600, color: '#cbd5e1' }}>
-                  Upload Target Reference Photo
+                  Target Reference Image
                 </p>
                 <p className="mono" style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.2rem' }}>
-                  Used for initial OSNet embedding comparison
+                  Query specimen for initial feature matching
                 </p>
               </>
             )}
@@ -379,8 +378,8 @@ export default function UploadWorkbench({ onUploadComplete, showToast }) {
             }}
             className="mono"
           >
-            <Sparkles size={16} />
-            <span>{isUploading ? 'Ingesting Feeds...' : 'Register Feeds &amp; Prepare Tracking'}</span>
+            <CheckCircle2 size={16} />
+            <span>{isUploading ? 'Ingesting Feeds...' : 'Register Feeds &amp; Index Channels'}</span>
           </button>
         </div>
       </div>

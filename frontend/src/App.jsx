@@ -175,7 +175,7 @@ export default function App() {
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <span className="mono" style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
-                    Re-ID Rotation Match: <strong style={{ color: '#10b981' }}>TORSO 70% + BODY 30%</strong>
+                    RE-ID ENGINE: <strong style={{ color: '#10b981' }}>MULTI-VIEW OSNET</strong> | THRESHOLD: <strong style={{ color: '#60a5fa' }}>0.73</strong>
                   </span>
                 </div>
               </div>

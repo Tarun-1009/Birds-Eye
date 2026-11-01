@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Sparkles, 
+  Eye, 
   Crosshair, 
   Play, 
   Pause, 
@@ -100,7 +100,7 @@ export default function DetectionStudio({ videos, target, onClose, showToast }) 
             justifyContent: 'center',
             color: 'var(--primary)'
           }}>
-            <Sparkles size={18} />
+            <Eye size={18} />
           </div>
           <div>
             <h2 style={{ fontSize: '1.15rem', fontWeight: '800', color: 'var(--text-main)', margin: 0 }}>

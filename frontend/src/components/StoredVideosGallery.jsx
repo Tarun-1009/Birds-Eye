@@ -7,7 +7,7 @@ import {
   Trash2, 
   Video as VideoIcon, 
   User, 
-  Sparkles
+  Eye
 } from 'lucide-react';
 import { SERVER_URL } from '../services/api';
 
@@ -161,7 +161,7 @@ export default function StoredVideosGallery({
                 gap: '4px'
               }}
             >
-              <Sparkles size={13} /> Detect in Videos
+              <Eye size={13} /> Detect in Videos
             </button>
 
             <button

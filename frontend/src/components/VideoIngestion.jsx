@@ -5,7 +5,7 @@ import {
   User, 
   X, 
   CheckCircle2, 
-  Sparkles, 
+  CheckCircle2, 
   FolderPlus,
   Play
 } from 'lucide-react';
@@ -435,7 +435,7 @@ export default function VideoIngestion({ onUploadSuccess, onTriggerDetection, sh
             cursor: 'pointer'
           }}
         >
-          <Sparkles size={16} />
+          <CheckCircle2 size={16} />
           <span>Launch Multi-Angle Detection</span>
         </button>
       </div>

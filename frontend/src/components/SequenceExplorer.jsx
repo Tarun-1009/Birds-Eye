@@ -8,7 +8,6 @@ import {
   ChevronRight,
   Eye,
   RefreshCw,
-  Sparkles,
   Luggage,
   ShieldAlert,
   ArrowUpRight,
@@ -146,8 +145,8 @@ export default function SequenceExplorer({
             </p>
 
             <div className="reid-rotation-pill mono">
-              <Sparkles size={11} color="#60a5fa" />
-              <span>Rotation-Invariant Re-ID: Torso (70%) + Body (30%) Active</span>
+              <CheckCircle2 size={12} color="#10b981" />
+              <span>Multi-Angle Re-ID: Torso &amp; Body Profile Verified</span>
             </div>
           </div>
         </div>
@@ -291,3 +290,4 @@ export default function SequenceExplorer({
     </div>
   );
 }
+
