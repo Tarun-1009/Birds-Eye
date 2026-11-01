@@ -270,17 +270,23 @@ export const getSightings = (req, res) => {
       params.push(camera_id);
     }
 
-    // General text search (matches global_id, label, entity_type, carried_items, camera_name)
+    // Multi-term text search (e.g. "blue van", "backpack", "red", "cam 1")
     if (searchTerm) {
-      query += ` AND (
-        s.global_id LIKE ? 
-        OR g.label LIKE ? 
-        OR s.entity_type LIKE ? 
-        OR s.carried_items LIKE ? 
-        OR c.name LIKE ?
-      )`;
-      const pattern = `%${searchTerm}%`;
-      params.push(pattern, pattern, pattern, pattern, pattern);
+      const terms = searchTerm.split(/\s+/).filter(Boolean);
+      for (const term of terms) {
+        query += ` AND (
+          s.global_id LIKE ? 
+          OR g.label LIKE ? 
+          OR g.dominant_color LIKE ?
+          OR s.entity_type LIKE ? 
+          OR s.carried_items LIKE ? 
+          OR c.name LIKE ?
+          OR s.orientation LIKE ?
+          OR s.crop_path LIKE ?
+        )`;
+        const pattern = `%${term}%`;
+        params.push(pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern);
+      }
     }
 
     // Sort chronologically by timestamp and frame to preserve frame-to-frame sequence

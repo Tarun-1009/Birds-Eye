@@ -16,8 +16,6 @@ ai_engine/models/*.pt
 data/videos/*.mp4
 data/videos/*.avi
 data/videos/*.mov
-!data/videos/cam1.mp4
-!data/videos/cam2.mp4
 data/crops/*.jpg
 data/crops/*.png
 data/output/*

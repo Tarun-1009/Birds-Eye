@@ -1,7 +1,6 @@
 /**
  * Mock Data Seeder Script (seedMockData.js)
- * Conforms to PRD Section 3.2:
- * Inserts 4 CCTV cameras (2x2 grid), distinct global identities (persons & objects),
+ * Inserts 4 CCTV cameras (2x2 grid), distinct global identities (persons & objects/vehicles),
  * and frame-to-frame sequence detections across orientations (FRONT, BACK, LEFT, RIGHT).
  */
 import { initializeDatabase } from './initDb.js';
@@ -24,17 +23,17 @@ export function seedMockData(dbInstance) {
     `);
 
     const cameras = [
-      ['CAM-01', 'Front Courtyard (Cam 1)', 'data/videos/cam1.mp4', 'Main Entrance West', 'ONLINE'],
-      ['CAM-02', 'North Gate (Cam 2)', 'data/videos/cam2.mp4', 'North Perimeter Fence', 'ONLINE'],
-      ['CAM-03', 'West Wing Corridor (Cam 3)', 'data/videos/cam3.mp4', 'Building A - West Corridor', 'ONLINE'],
-      ['CAM-04', 'Central Plaza (Cam 4)', 'data/videos/cam4.mp4', 'Central Atrium Level 1', 'ONLINE'],
+      ['CAM-01', 'Front Courtyard (Cam 1)', 'data/videos/cam1.mp4', 'Main Entrance West Gate', 'ONLINE'],
+      ['CAM-02', 'North Gate (Cam 2)', 'data/videos/cam2.mp4', 'North Perimeter Lane', 'ONLINE'],
+      ['CAM-03', 'West Wing Corridor (Cam 3)', 'data/videos/cam3.mp4', 'Building A - Service Driveway', 'ONLINE'],
+      ['CAM-04', 'Central Plaza (Cam 4)', 'data/videos/cam4.mp4', 'Central Atrium Loading Dock', 'ONLINE'],
     ];
 
     for (const cam of cameras) {
       insertCamera.run(...cam);
     }
 
-    // 3. Insert Global Identities (Persons and Objects)
+    // 3. Insert Global Identities (Persons, Objects, and Vehicles)
     const insertIdentity = db.prepare(`
       INSERT INTO global_identities (
         global_id, entity_type, label, first_seen_camera, first_seen_timestamp, dominant_color, reference_image_url, total_sightings
@@ -42,11 +41,13 @@ export function seedMockData(dbInstance) {
     `);
 
     const identities = [
-      ['GID-101', 'person', 'Subject Alpha (Blue Jacket)', 'CAM-01', 1.0, '#2563eb', 'crop_sample_cctv_recording_f0000_person_0.jpg', 6],
-      ['GID-102', 'person', 'Subject Bravo (Red Hoodie)', 'CAM-02', 1.8, '#dc2626', 'crop_sample_cctv_recording_f0000_person_1.jpg', 4],
-      ['GID-103', 'person', 'Subject Charlie (Green Parka)', 'CAM-03', 2.5, '#16a34a', 'crop_sample_cctv_recording_f0020_person_0.jpg', 3],
-      ['OBJ-201', 'object', 'Tactical Backpack', 'CAM-01', 1.0, '#0f172a', 'crop_sample_cctv_recording_f0000_person_4.jpg', 4],
-      ['OBJ-202', 'object', 'Travel Suitcase', 'CAM-04', 3.0, '#475569', 'crop_sample_cctv_recording_f0005_person_3.jpg', 2],
+      ['GID-101', 'person', 'Subject Alpha (Blue Jacket)', 'CAM-01', 1.0, 'blue #2563eb', 'crop_sample_cctv_recording_f0000_person_0.jpg', 6],
+      ['GID-102', 'person', 'Subject Bravo (Red Hoodie)', 'CAM-02', 1.8, 'red #dc2626', 'crop_sample_cctv_recording_f0000_person_1.jpg', 4],
+      ['GID-103', 'person', 'Subject Charlie (Green Parka)', 'CAM-03', 2.5, 'green #16a34a', 'crop_sample_cctv_recording_f0020_person_0.jpg', 3],
+      ['OBJ-201', 'object', 'Tactical Backpack', 'CAM-01', 1.0, 'black #0f172a', 'crop_sample_cctv_recording_f0000_person_4.jpg', 4],
+      ['OBJ-202', 'object', 'Travel Suitcase', 'CAM-04', 3.0, 'slate #475569', 'crop_sample_cctv_recording_f0005_person_3.jpg', 2],
+      ['VEH-301', 'object', 'Blue Delivery Van', 'CAM-01', 0.5, 'blue #1e40af', 'crop_sample_cctv_recording_f0000_person_0.jpg', 4],
+      ['VEH-302', 'object', 'Silver SUV / Car', 'CAM-03', 2.0, 'silver #94a3b8', 'crop_sample_cctv_recording_f0005_person_3.jpg', 2],
     ];
 
     for (const id of identities) {
@@ -77,7 +78,37 @@ export function seedMockData(dbInstance) {
     `);
 
     const sampleSightings = [
-      // Sequence 1: GID-101 walking into Courtyard (Cam 1) facing FRONT
+      // VEH-301 (Blue Delivery Van) sequence
+      {
+        camera_id: 'CAM-01', timestamp_sec: 0.5, global_id: 'VEH-301', entity_type: 'object',
+        local_track_id: 101, frame_index: 12, timestamp: '00:00', confidence: 0.96,
+        orientation: 'FRONT', bbox_x: 120, bbox_y: 80, bbox_w: 310, bbox_h: 210,
+        bev_x: 25.0, bev_y: 15.0, crop_path: 'crop_sample_cctv_recording_f0000_person_0.jpg',
+        carried_items: JSON.stringify(['cargo_pallet'])
+      },
+      {
+        camera_id: 'CAM-01', timestamp_sec: 2.0, global_id: 'VEH-301', entity_type: 'object',
+        local_track_id: 101, frame_index: 50, timestamp: '00:02', confidence: 0.94,
+        orientation: 'RIGHT', bbox_x: 320, bbox_y: 90, bbox_w: 320, bbox_h: 200,
+        bev_x: 40.0, bev_y: 22.0, crop_path: 'crop_sample_cctv_recording_f0005_person_0.jpg',
+        carried_items: JSON.stringify(['cargo_pallet'])
+      },
+      {
+        camera_id: 'CAM-02', timestamp_sec: 4.2, global_id: 'VEH-301', entity_type: 'object',
+        local_track_id: 102, frame_index: 105, timestamp: '00:04', confidence: 0.93,
+        orientation: 'BACK', bbox_x: 200, bbox_y: 110, bbox_w: 300, bbox_h: 195,
+        bev_x: 60.0, bev_y: 35.0, crop_path: 'crop_sample_cctv_recording_f0010_person_0.jpg',
+        carried_items: JSON.stringify(['cargo_pallet'])
+      },
+      {
+        camera_id: 'CAM-04', timestamp_sec: 6.0, global_id: 'VEH-301', entity_type: 'object',
+        local_track_id: 104, frame_index: 150, timestamp: '00:06', confidence: 0.91,
+        orientation: 'LEFT', bbox_x: 180, bbox_y: 100, bbox_w: 310, bbox_h: 205,
+        bev_x: 75.0, bev_y: 65.0, crop_path: 'crop_sample_cctv_recording_f0015_person_0.jpg',
+        carried_items: null
+      },
+
+      // Sequence: GID-101 walking into Courtyard (Cam 1) facing FRONT
       {
         camera_id: 'CAM-01', timestamp_sec: 1.0, global_id: 'GID-101', entity_type: 'person',
         local_track_id: 1, frame_index: 25, timestamp: '00:01', confidence: 0.94,
@@ -85,7 +116,7 @@ export function seedMockData(dbInstance) {
         bev_x: 42.1, bev_y: 20.5, crop_path: 'crop_sample_cctv_recording_f0000_person_0.jpg',
         carried_items: JSON.stringify(['backpack'])
       },
-      // Sequence 2: OBJ-201 detected carried by GID-101 at Cam 1
+      // OBJ-201 detected carried by GID-101 at Cam 1
       {
         camera_id: 'CAM-01', timestamp_sec: 1.0, global_id: 'OBJ-201', entity_type: 'object',
         local_track_id: 20, frame_index: 25, timestamp: '00:01', confidence: 0.88,
@@ -93,7 +124,7 @@ export function seedMockData(dbInstance) {
         bev_x: 42.1, bev_y: 20.5, crop_path: 'crop_sample_cctv_recording_f0000_person_4.jpg',
         carried_items: null
       },
-      // Sequence 3: GID-101 turns RIGHT towards North Gate in Cam 1
+      // GID-101 turns RIGHT towards North Gate in Cam 1
       {
         camera_id: 'CAM-01', timestamp_sec: 2.5, global_id: 'GID-101', entity_type: 'person',
         local_track_id: 1, frame_index: 62, timestamp: '00:02', confidence: 0.92,
@@ -101,8 +132,7 @@ export function seedMockData(dbInstance) {
         bev_x: 51.5, bev_y: 26.8, crop_path: 'crop_sample_cctv_recording_f0005_person_0.jpg',
         carried_items: JSON.stringify(['backpack'])
       },
-      // Sequence 4: GID-101 appears in Cam 2 walking AWAY (180 degree rotation - BACK)
-      // Re-ID correctly matches using Torso + Body weighting!
+      // GID-101 appears in Cam 2 walking AWAY (180 degree rotation - BACK)
       {
         camera_id: 'CAM-02', timestamp_sec: 3.5, global_id: 'GID-101', entity_type: 'person',
         local_track_id: 2, frame_index: 87, timestamp: '00:03', confidence: 0.90,
@@ -110,7 +140,7 @@ export function seedMockData(dbInstance) {
         bev_x: 58.2, bev_y: 38.5, crop_path: 'crop_sample_cctv_recording_f0010_person_0.jpg',
         carried_items: JSON.stringify(['backpack'])
       },
-      // Sequence 5: OBJ-201 seen on back of GID-101 in Cam 2
+      // OBJ-201 seen on back of GID-101 in Cam 2
       {
         camera_id: 'CAM-02', timestamp_sec: 3.5, global_id: 'OBJ-201', entity_type: 'object',
         local_track_id: 21, frame_index: 87, timestamp: '00:03', confidence: 0.89,
@@ -118,57 +148,54 @@ export function seedMockData(dbInstance) {
         bev_x: 58.2, bev_y: 38.5, crop_path: 'crop_sample_cctv_recording_f0000_person_4.jpg',
         carried_items: null
       },
-      // Sequence 6: GID-101 turns LEFT towards courtyard corridor
+      // GID-101 moving LEFT profile along North Gate corridor
       {
         camera_id: 'CAM-02', timestamp_sec: 4.6, global_id: 'GID-101', entity_type: 'person',
         local_track_id: 2, frame_index: 115, timestamp: '00:04', confidence: 0.93,
-        orientation: 'LEFT', bbox_x: 380, bbox_y: 185, bbox_w: 92, bbox_h: 260,
-        bev_x: 62.4, bev_y: 46.1, crop_path: 'crop_sample_cctv_recording_f0015_person_0.jpg',
+        orientation: 'LEFT', bbox_x: 180, bbox_y: 170, bbox_w: 88, bbox_h: 260,
+        bev_x: 62.0, bev_y: 45.2, crop_path: 'crop_sample_cctv_recording_f0015_person_0.jpg',
         carried_items: JSON.stringify(['backpack'])
       },
-      // Sequence 7: GID-101 arrives in Central Plaza (Cam 4)
+      // GID-101 entering Central Plaza (Cam 4)
       {
         camera_id: 'CAM-04', timestamp_sec: 5.4, global_id: 'GID-101', entity_type: 'person',
         local_track_id: 4, frame_index: 135, timestamp: '00:05', confidence: 0.91,
-        orientation: 'RIGHT', bbox_x: 410, bbox_y: 195, bbox_w: 98, bbox_h: 270,
-        bev_x: 73.1, bev_y: 60.5, crop_path: 'crop_sample_cctv_recording_f0005_person_0.jpg',
+        orientation: 'RIGHT', bbox_x: 320, bbox_y: 140, bbox_w: 92, bbox_h: 250,
+        bev_x: 70.4, bev_y: 58.9, crop_path: 'crop_sample_cctv_recording_f0005_person_0.jpg',
         carried_items: JSON.stringify(['backpack'])
       },
 
-      // Sequence 8: GID-102 (Subject Bravo) enters North Gate (Cam 2) - FRONT
+      // Subject Bravo (Red Hoodie) - GID-102
       {
         camera_id: 'CAM-02', timestamp_sec: 1.8, global_id: 'GID-102', entity_type: 'person',
         local_track_id: 5, frame_index: 45, timestamp: '00:01', confidence: 0.96,
-        orientation: 'FRONT', bbox_x: 180, bbox_y: 210, bbox_w: 110, bbox_h: 285,
-        bev_x: 34.0, bev_y: 48.0, crop_path: 'crop_sample_cctv_recording_f0000_person_1.jpg',
+        orientation: 'FRONT', bbox_x: 410, bbox_y: 190, bbox_w: 105, bbox_h: 260,
+        bev_x: 65.1, bev_y: 30.2, crop_path: 'crop_sample_cctv_recording_f0000_person_1.jpg',
         carried_items: JSON.stringify([])
       },
-      // Sequence 9: GID-102 crossing camera view - RIGHT
       {
         camera_id: 'CAM-02', timestamp_sec: 3.2, global_id: 'GID-102', entity_type: 'person',
         local_track_id: 5, frame_index: 80, timestamp: '00:03', confidence: 0.93,
-        orientation: 'RIGHT', bbox_x: 340, bbox_y: 220, bbox_w: 105, bbox_h: 280,
-        bev_x: 47.5, bev_y: 55.2, crop_path: 'crop_sample_cctv_recording_f0005_person_1.jpg',
+        orientation: 'RIGHT', bbox_x: 480, bbox_y: 200, bbox_w: 100, bbox_h: 255,
+        bev_x: 71.0, bev_y: 35.4, crop_path: 'crop_sample_cctv_recording_f0005_person_1.jpg',
         carried_items: JSON.stringify([])
       },
-      // Sequence 10: GID-102 in Central Plaza (Cam 4) walking away - BACK
       {
         camera_id: 'CAM-04', timestamp_sec: 4.8, global_id: 'GID-102', entity_type: 'person',
         local_track_id: 6, frame_index: 120, timestamp: '00:04', confidence: 0.88,
-        orientation: 'BACK', bbox_x: 520, bbox_y: 170, bbox_w: 95, bbox_h: 265,
-        bev_x: 61.5, bev_y: 64.0, crop_path: 'crop_sample_cctv_recording_f0010_person_1.jpg',
+        orientation: 'BACK', bbox_x: 210, bbox_y: 180, bbox_w: 96, bbox_h: 245,
+        bev_x: 74.2, bev_y: 62.0, crop_path: 'crop_sample_cctv_recording_f0010_person_1.jpg',
         carried_items: JSON.stringify([])
       },
 
-      // Sequence 11: GID-103 in West Wing (Cam 3) - LEFT
+      // Subject Charlie (Green Parka) - GID-103
       {
         camera_id: 'CAM-03', timestamp_sec: 2.5, global_id: 'GID-103', entity_type: 'person',
         local_track_id: 8, frame_index: 62, timestamp: '00:02', confidence: 0.95,
-        orientation: 'LEFT', bbox_x: 220, bbox_y: 150, bbox_w: 98, bbox_h: 268,
-        bev_x: 67.2, bev_y: 67.0, crop_path: 'crop_sample_cctv_recording_f0020_person_0.jpg',
+        orientation: 'LEFT', bbox_x: 310, bbox_y: 160, bbox_w: 110, bbox_h: 275,
+        bev_x: 68.0, bev_y: 70.1, crop_path: 'crop_sample_cctv_recording_f0020_person_0.jpg',
         carried_items: JSON.stringify([])
       },
-      // Sequence 12: GID-103 approaching checkpoint - FRONT
       {
         camera_id: 'CAM-03', timestamp_sec: 4.1, global_id: 'GID-103', entity_type: 'person',
         local_track_id: 8, frame_index: 102, timestamp: '00:04', confidence: 0.97,
@@ -177,7 +204,16 @@ export function seedMockData(dbInstance) {
         carried_items: JSON.stringify([])
       },
 
-      // Sequence 13: OBJ-202 (Suitcase) in Plaza
+      // VEH-302 (Silver SUV / Car)
+      {
+        camera_id: 'CAM-03', timestamp_sec: 2.0, global_id: 'VEH-302', entity_type: 'object',
+        local_track_id: 201, frame_index: 50, timestamp: '00:02', confidence: 0.95,
+        orientation: 'FRONT', bbox_x: 150, bbox_y: 130, bbox_w: 330, bbox_h: 220,
+        bev_x: 35.0, bev_y: 45.0, crop_path: 'crop_sample_cctv_recording_f0005_person_3.jpg',
+        carried_items: null
+      },
+
+      // OBJ-202 (Travel Suitcase)
       {
         camera_id: 'CAM-04', timestamp_sec: 3.0, global_id: 'OBJ-202', entity_type: 'object',
         local_track_id: 30, frame_index: 75, timestamp: '00:03', confidence: 0.91,

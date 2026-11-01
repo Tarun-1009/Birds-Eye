@@ -1,18 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import {
   Search,
-  Compass,
   Play,
   Pause,
   ChevronLeft,
   ChevronRight,
   Eye,
-  Luggage,
+  X,
   ArrowUpRight,
-  CheckCircle2,
-  Target,
-  Sparkles,
-  Percent
+  Luggage,
+  Sparkles
 } from 'lucide-react';
 import { getCropImageUrl } from '../services/api';
 
@@ -31,7 +28,7 @@ export default function SequenceExplorer({
 }) {
   const [isPlayingSequence, setIsPlayingSequence] = useState(false);
 
-  // Auto-play timeline step through frame-to-frame sequence
+  // Auto-step timeline player
   useEffect(() => {
     if (!isPlayingSequence || sightings.length === 0) return;
 
@@ -44,14 +41,13 @@ export default function SequenceExplorer({
         }
         return next;
       });
-    }, 2500);
+    }, 2200);
 
     return () => clearInterval(interval);
   }, [isPlayingSequence, sightings, onSelectSightingIndex, onSeekCamera]);
 
   const currentSighting = sightings[activeSightingIndex] || sightings[0] || null;
 
-  // Active target identity metadata
   const activeIdentity = identities.find(
     (id) => currentSighting && id.global_id === currentSighting.global_id
   ) || identities[0] || null;
@@ -76,304 +72,275 @@ export default function SequenceExplorer({
     }
   };
 
+  const quickSearchChips = [
+    { label: 'Blue Van', query: 'blue van' },
+    { label: 'Backpack', query: 'backpack' },
+    { label: 'Red Hoodie', query: 'hoodie' },
+    { label: 'Silver Car', query: 'silver car' },
+    { label: 'All Feeds', query: '' },
+  ];
+
   const orientationFilters = [
-    { id: 'ALL', label: 'ALL ORIENTATIONS' },
-    { id: 'FRONT', label: 'FRONT' },
-    { id: 'BACK', label: 'BACK' },
-    { id: 'SIDE', label: 'SIDE' },
+    { id: 'ALL', label: 'All Angles' },
+    { id: 'FRONT', label: 'Front' },
+    { id: 'BACK', label: 'Back' },
+    { id: 'SIDE', label: 'Side' },
+  ];
+
+  const entityFilters = [
+    { id: 'all', label: 'All Types' },
+    { id: 'person', label: 'Persons' },
+    { id: 'object', label: 'Vehicles & Objects' },
   ];
 
   const formatTimestamp = (sec) => {
-    if (sec === undefined || sec === null) return '00:00.0';
+    if (sec === undefined || sec === null) return '00:00';
     const m = Math.floor(sec / 60);
-    const s = (sec % 60).toFixed(1);
-    return `${m.toString().padStart(2, '0')}:${s.padStart(4, '0')}`;
+    const s = Math.floor(sec % 60);
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  // Calculate highest match percentage in current sightings
-  const highestMatch = sightings.length > 0
-    ? Math.max(...sightings.map((s) => s.confidence || 0))
-    : 0.981;
-
   return (
-    <div className="search-explorer-col">
-      {/* Search Console Header */}
-      <div className="explorer-header">
-        <div className="search-input-wrap">
-          <Search size={15} />
-          <input
-            type="text"
-            className="unified-search-input mono"
-            placeholder="Search Target, Object, or Camera..."
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-          />
+    <div className="sequence-panel-light">
+      {/* 1. Smart Search Input with Clear Button */}
+      <div className="search-input-box-light">
+        <Search size={16} color="#94a3b8" />
+        <input
+          type="text"
+          className="search-field-light"
+          placeholder="Search 'blue van', 'backpack', 'person'..."
+          value={searchQuery}
+          onChange={(e) => onSearchChange(e.target.value)}
+        />
+        {searchQuery && (
+          <button
+            type="button"
+            onClick={() => onSearchChange('')}
+            className="player-btn-clean"
+            title="Clear search"
+          >
+            <X size={15} />
+          </button>
+        )}
+      </div>
+
+      {/* 2. Instant Search Chips */}
+      <div className="popular-chips-wrap">
+        <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Filter:</span>
+        {quickSearchChips.map((chip, idx) => (
+          <button
+            key={idx}
+            type="button"
+            className={`light-chip-btn ${searchQuery.toLowerCase() === chip.query ? 'active' : ''}`}
+            onClick={() => onSearchChange(chip.query)}
+          >
+            {chip.label}
+          </button>
+        ))}
+      </div>
+
+      {/* 3. Segmented Filter Strips */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+        <div className="light-filter-strip">
+          {entityFilters.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              className={`light-filter-btn ${activeEntityFilter === f.id ? 'active' : ''}`}
+              onClick={() => onEntityFilterChange(f.id)}
+            >
+              {f.label}
+            </button>
+          ))}
         </div>
 
-        {/* Orientation Filter Chips */}
-        <div className="orientation-filter-strip">
+        <div className="light-filter-strip">
           {orientationFilters.map((f) => (
             <button
               key={f.id}
-              className={`filter-chip-btn ${activeOrientation === f.id ? 'active' : ''}`}
+              type="button"
+              className={`light-filter-btn ${activeOrientation === f.id ? 'active' : ''}`}
               onClick={() => onOrientationChange(f.id)}
             >
-              <Compass size={12} />
-              <span>{f.label}</span>
+              {f.label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Target Re-ID & Match Card */}
+      {/* 4. Active Target Profile Spotlight */}
       {activeIdentity && (
-        <div className="target-reid-card" style={{ padding: '0.9rem' }}>
-          <div className="reid-thumb-box" style={{ width: '68px', height: '68px', borderRadius: '8px', overflow: 'hidden' }}>
+        <div className="target-spotlight-light">
+          <div className="spotlight-thumb-wrap">
             {activeIdentity.reference_image_url || activeIdentity.initial_crop_path ? (
               <img
                 src={getCropImageUrl(activeIdentity.reference_image_url || activeIdentity.initial_crop_path)}
                 alt={activeIdentity.global_id}
-                className="reid-thumb-img"
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
             ) : (
-              <Eye size={24} color="#3b82f6" />
+              <Eye size={20} color="#64748b" />
             )}
           </div>
 
-          <div className="target-meta-details" style={{ flex: 1 }}>
-            <div className="target-title-line" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span className="target-gid-label mono" style={{ fontSize: '0.8rem', fontWeight: 800 }}>
-                  {activeIdentity.global_id}
-                </span>
-                <span className="system-tag mono">{activeIdentity.entity_type}</span>
-              </div>
-
-              {/* Best Match Percentage Badge */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                backgroundColor: 'rgba(16, 185, 129, 0.2)',
-                border: '1px solid #10b981',
-                borderRadius: '6px',
-                padding: '2px 8px',
-                color: '#34d399',
-                fontSize: '0.78rem',
-                fontWeight: 900
-              }}>
-                <Target size={12} color="#34d399" />
-                <span>{Math.round(highestMatch * 100)}% BEST MATCH</span>
-              </div>
-            </div>
-
-            <p style={{ fontSize: '0.75rem', color: '#cbd5e1', fontWeight: 600, marginTop: '3px' }}>
-              {activeIdentity.label || 'Tracked Target Profile'}
-            </p>
-
-            {/* Re-ID confidence meter */}
-            <div style={{ width: '100%', height: '5px', backgroundColor: '#1e293b', borderRadius: '3px', marginTop: '6px', overflow: 'hidden' }}>
-              <div style={{ width: `${Math.round(highestMatch * 100)}%`, height: '100%', backgroundColor: '#10b981', transition: 'width 0.3s ease' }} />
-            </div>
-
-            <div className="reid-rotation-pill mono" style={{ marginTop: '6px', fontSize: '0.68rem' }}>
-              <CheckCircle2 size={12} color="#10b981" />
-              <span>Multi-Camera Re-ID: 4 Synchronized Feeds Tracked</span>
-            </div>
+          <div className="spotlight-details">
+            <span className="spotlight-id-tag mono">{activeIdentity.global_id}</span>
+            <span className="spotlight-title">{activeIdentity.label || 'Target Profile'}</span>
+            <span className="spotlight-meta-line mono">
+              {sightings.length} frame detections indexed across cameras
+            </span>
           </div>
         </div>
       )}
 
-      {/* Sequence Stepper Header */}
-      <div className="sequence-controls-bar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <span style={{ fontSize: '0.78rem', fontWeight: 800 }} className="mono">
-            FRAME SEQUENCE
+      {/* 5. Timeline Stepper Header */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '0.4rem 0',
+        borderBottom: '1px solid #e2e8f0'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+          <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a' }}>
+            Chronological Sequence
           </span>
           <span className="mono" style={{ fontSize: '0.72rem', color: '#64748b' }}>
-            ({sightings.length > 0 ? activeSightingIndex + 1 : 0} of {sightings.length})
+            ({sightings.length > 0 ? activeSightingIndex + 1 : 0} / {sightings.length})
           </span>
         </div>
 
-        <div className="step-btns-group">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
           <button
-            className="step-btn mono"
+            type="button"
+            className="light-chip-btn"
             onClick={handleStepPrev}
             disabled={sightings.length <= 1}
-            title="Step Previous Frame"
+            title="Previous Frame"
           >
             <ChevronLeft size={13} />
-            <span>Prev</span>
           </button>
 
           <button
-            className="step-btn mono"
+            type="button"
+            className={`light-chip-btn ${isPlayingSequence ? 'active' : ''}`}
             onClick={() => setIsPlayingSequence(!isPlayingSequence)}
-            style={{
-              backgroundColor: isPlayingSequence ? 'rgba(59, 130, 246, 0.25)' : 'transparent',
-              borderColor: isPlayingSequence ? '#3b82f6' : '#1e293b',
-              color: isPlayingSequence ? '#60a5fa' : '#94a3b8',
-              fontWeight: 700
-            }}
-            title={isPlayingSequence ? 'Pause Sequence Stepper' : 'Auto Step Frame Sequence'}
+            title={isPlayingSequence ? 'Pause Sequence' : 'Auto-Step Sequence'}
+            style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
           >
-            {isPlayingSequence ? <Pause size={12} fill="#60a5fa" /> : <Play size={12} fill="#60a5fa" />}
+            {isPlayingSequence ? <Pause size={12} /> : <Play size={12} />}
             <span>{isPlayingSequence ? 'Pause' : 'Play'}</span>
           </button>
 
           <button
-            className="step-btn mono"
+            type="button"
+            className="light-chip-btn"
             onClick={handleStepNext}
             disabled={sightings.length <= 1}
-            title="Step Next Frame"
+            title="Next Frame"
           >
-            <span>Next</span>
             <ChevronRight size={13} />
           </button>
         </div>
       </div>
 
-      {/* Chronological Frame Sequence List */}
-      <div className="sequence-feed-list">
+      {/* 6. Chronological Sighting Cards List */}
+      <div className="sequence-cards-list-light">
         {sightings.length === 0 ? (
-          <div style={{ padding: '3rem 1rem', textAlign: 'center', color: '#64748b' }}>
-            <p className="mono" style={{ fontSize: '0.82rem' }}>No frame sightings found</p>
+          <div style={{ padding: '2.5rem 1rem', textAlign: 'center', color: '#64748b' }}>
+            <p style={{ fontSize: '0.88rem', fontWeight: 600, color: '#0f172a' }}>
+              No sightings matching "{searchQuery}"
+            </p>
+            <p style={{ fontSize: '0.78rem', marginTop: '0.4rem', color: '#64748b' }}>
+              Try searching "blue van", "backpack", or click "All Feeds" above.
+            </p>
           </div>
         ) : (
           sightings.map((s, idx) => {
             const isSelected = activeSightingIndex === idx;
-            const ori = (s.orientation || 'na').toLowerCase();
-            const matchPercent = Math.round((s.confidence || 0.9) * 100);
-
-            // Match color badge
-            const isHighMatch = matchPercent >= 90;
-            const matchBadgeBg = isHighMatch ? 'rgba(16, 185, 129, 0.2)' : 'rgba(59, 130, 246, 0.2)';
-            const matchBadgeBorder = isHighMatch ? '#10b981' : '#3b82f6';
-            const matchTextColor = isHighMatch ? '#34d399' : '#60a5fa';
-
+            const ori = (s.orientation || 'front').toLowerCase();
             let carriedList = [];
             try {
               if (s.carried_items) {
                 carriedList = typeof s.carried_items === 'string' ? JSON.parse(s.carried_items) : s.carried_items;
               }
-            } catch (e) {
+            } catch {
               carriedList = [];
             }
 
             return (
               <div
                 key={s.id || idx}
-                className={`frame-sighting-card ${isSelected ? 'active-step' : ''}`}
+                className={`sighting-card-clean ${isSelected ? 'active' : ''}`}
                 onClick={() => {
                   onSelectSightingIndex(idx);
                   if (onSeekCamera) {
                     onSeekCamera(s.camera_id, s.timestamp_sec);
                   }
                 }}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.4rem',
-                  padding: '0.65rem 0.75rem',
-                  cursor: 'pointer',
-                  border: isSelected ? '1px solid #3b82f6' : '1px solid #1e293b',
-                  backgroundColor: isSelected ? 'rgba(30, 58, 138, 0.25)' : '#0b132b',
-                  borderRadius: '8px',
-                  transition: 'all 0.15s ease'
-                }}
               >
-                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                  {/* Crop Thumbnail */}
-                  <div className="frame-crop-preview" style={{ width: '46px', height: '46px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}>
-                    {s.crop_path ? (
-                      <img
-                        src={getCropImageUrl(s.crop_path)}
-                        alt={`Crop frame ${s.frame_index || idx}`}
-                        className="frame-crop-img"
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      />
-                    ) : (
-                      <Eye size={18} color="#64748b" />
-                    )}
-                  </div>
-
-                  {/* Sighting Details */}
-                  <div className="frame-data-col" style={{ flex: 1, minWidth: 0 }}>
-                    <div className="frame-row-top" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span className="frame-cam-label mono" style={{ fontSize: '0.8rem', fontWeight: 700, color: '#f8fafc' }}>
-                        {s.camera_name || s.camera_id}
-                      </span>
-                      <span className="frame-time-tag mono" style={{ fontSize: '0.72rem', color: '#38bdf8' }}>
-                        t={formatTimestamp(s.timestamp_sec)}s
-                      </span>
-                    </div>
-
-                    <div className="frame-row-bottom" style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
-                      <span className={`ori-tag ${ori} mono`} style={{ fontSize: '0.68rem', padding: '1px 5px', borderRadius: '3px' }}>
-                        {s.orientation}
-                      </span>
-
-                      {/* Prominent Match Percentage Pill */}
-                      <span
-                        className="mono"
-                        style={{
-                          fontSize: '0.74rem',
-                          fontWeight: 800,
-                          backgroundColor: matchBadgeBg,
-                          border: `1px solid ${matchBadgeBorder}`,
-                          color: matchTextColor,
-                          padding: '1px 6px',
-                          borderRadius: '4px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '3px'
-                        }}
-                      >
-                        <Percent size={10} />
-                        {matchPercent}% Match
-                      </span>
-
-                      {carriedList.map((item, cIdx) => (
-                        <span key={cIdx} className="carried-item-badge mono" style={{ fontSize: '0.65rem' }}>
-                          <Luggage size={10} />
-                          <span>{item}</span>
-                        </span>
-                      ))}
-
-                      <button
-                        type="button"
-                        className="seek-action-link mono"
-                        style={{
-                          marginLeft: 'auto',
-                          background: 'none',
-                          border: 'none',
-                          color: '#60a5fa',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '2px',
-                          fontSize: '0.72rem',
-                          cursor: 'pointer',
-                          fontWeight: 700
-                        }}
-                      >
-                        <span>Jump</span>
-                        <ArrowUpRight size={11} />
-                      </button>
-                    </div>
-                  </div>
+                {/* Crop Thumbnail */}
+                <div className="sighting-thumb-clean">
+                  {s.crop_path ? (
+                    <img
+                      src={getCropImageUrl(s.crop_path)}
+                      alt={`Detection ${idx}`}
+                    />
+                  ) : (
+                    <Eye size={16} color="#64748b" />
+                  )}
                 </div>
 
-                {/* Match percentage meter bar */}
-                <div style={{ width: '100%', height: '3px', backgroundColor: '#1e293b', borderRadius: '2px', overflow: 'hidden' }}>
-                  <div
-                    style={{
-                      width: `${matchPercent}%`,
-                      height: '100%',
-                      backgroundColor: matchTextColor,
-                      transition: 'width 0.2s ease'
-                    }}
-                  />
+                {/* Sighting Metadata */}
+                <div className="sighting-content-col">
+                  <div className="sighting-top-line">
+                    <span className="sighting-cam-name">
+                      {s.camera_name || s.camera_id}
+                    </span>
+                    <span className="sighting-time-text mono">
+                      t={formatTimestamp(s.timestamp_sec)}
+                    </span>
+                  </div>
+
+                  <div className="sighting-bottom-tags">
+                    <span className={`clean-pill-tag ${ori}`}>
+                      {s.orientation || 'ANGLE'}
+                    </span>
+
+                    {s.global_id && (
+                      <span className="mono" style={{ fontSize: '0.72rem', color: '#2563eb', fontWeight: 700 }}>
+                        {s.global_id}
+                      </span>
+                    )}
+
+                    {s.identity_label && (
+                      <span style={{ fontSize: '0.72rem', color: '#475569', fontWeight: 500 }}>
+                        {s.identity_label}
+                      </span>
+                    )}
+
+                    {carriedList.map((item, cIdx) => (
+                      <span key={cIdx} className="carried-clean-pill mono">
+                        <Luggage size={10} style={{ display: 'inline', marginRight: '3px' }} />
+                        {item}
+                      </span>
+                    ))}
+
+                    <button
+                      type="button"
+                      className="seek-btn-clean"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectSightingIndex(idx);
+                        if (onSeekCamera) {
+                          onSeekCamera(s.camera_id, s.timestamp_sec);
+                        }
+                      }}
+                      title="Seek camera stream to this exact frame"
+                    >
+                      <span>Seek</span>
+                      <ArrowUpRight size={11} />
+                    </button>
+                  </div>
                 </div>
               </div>
             );
