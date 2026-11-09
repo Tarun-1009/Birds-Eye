@@ -18,8 +18,10 @@ import {
   deleteVideoFile,
   deleteTargetFile,
   seedDatabase,
+  runDetectionApi,
+  clearAllVideosApi,
 } from './services/api';
-import { RefreshCw, ShieldCheck } from 'lucide-react';
+import { RefreshCw, ShieldCheck, Play, Trash2, Cpu } from 'lucide-react';
 
 export default function App() {
   // Navigation tabs: 'overview' | 'ingestion' | 'vault' | 'studio' | 'birdseye' | 'activity'
@@ -27,6 +29,7 @@ export default function App() {
   const [isOnline, setIsOnline] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [isDetecting, setIsDetecting] = useState(false);
 
   // Core Surveillance Data
   const [cameras, setCameras] = useState([]);
@@ -124,6 +127,33 @@ export default function App() {
     });
   };
 
+  const handleRunDetectionPipeline = async () => {
+    setIsDetecting(true);
+    try {
+      showToast('Running AI multi-angle detection and Re-ID pipeline on feeds...', 'info');
+      const res = await runDetectionApi({ sampleStep: 10, conf: 0.25 });
+      showToast(res.message || `AI tracking pipeline complete: ${res.identitiesCount || 0} unique targets, ${res.sightingsCount || 0} frames indexed!`, 'success');
+      await loadCoreData();
+      await loadSightings();
+    } catch (err) {
+      showToast(err.message || 'Detection failed', 'error');
+    } finally {
+      setIsDetecting(false);
+    }
+  };
+
+  const handleClearAllFeeds = async () => {
+    if (!window.confirm('Are you sure you want to delete all camera feeds, crops, and tracking records? This resets the platform completely.')) return;
+    try {
+      const res = await clearAllVideosApi();
+      showToast(res.message || 'All records and camera feeds cleared.', 'success');
+      await loadCoreData();
+      await loadSightings();
+    } catch (err) {
+      showToast(err.message || 'Failed to clear feeds.', 'error');
+    }
+  };
+
   const handleQuickSeed = async () => {
     setIsSeeding(true);
     try {
@@ -218,17 +248,28 @@ export default function App() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
                   <button 
+                    onClick={handleRunDetectionPipeline} 
+                    disabled={isDetecting}
+                    className="continue-blue-btn"
+                    style={{ padding: '0.45rem 1rem', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <Cpu size={15} className={isDetecting ? 'spin' : ''} />
+                    <span>{isDetecting ? 'Running AI Tracking...' : 'Run AI Detection Pipeline'}</span>
+                  </button>
+
+                  <button 
                     onClick={handleQuickSeed} 
                     disabled={isSeeding}
                     className="light-chip-btn"
                     style={{ padding: '0.45rem 0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}
+                    title="Reload mock demo verification dataset"
                   >
                     <RefreshCw size={14} className={isSeeding ? 'spin' : ''} />
-                    <span>{isSeeding ? 'Syncing...' : 'Reload Verified Dataset'}</span>
+                    <span>{isSeeding ? 'Syncing...' : 'Reload Demo Data'}</span>
                   </button>
                   <span className="ready-status-pill-blue" style={{ padding: '0.35rem 0.8rem', fontSize: '0.78rem' }}>
                     <span className="operational-dot-blue"></span>
-                    <span>Re-ID Match: 89.9% Accuracy</span>
+                    <span>Re-ID: Rotation-Invariant</span>
                   </span>
                 </div>
               </div>
@@ -239,6 +280,7 @@ export default function App() {
                   <MultiCameraMatrix
                     cameras={cameras}
                     seekTarget={seekTarget}
+                    onNavigateToIngestion={() => setActiveTab('ingestion')}
                   />
                 </div>
 
@@ -277,6 +319,7 @@ export default function App() {
                 onDeleteVideo={handleDeleteVideo}
                 onDeleteTarget={handleDeleteTarget}
                 onLaunchDetection={() => setActiveTab('studio')}
+                onClearAll={handleClearAllFeeds}
                 isRefreshing={isRefreshing}
               />
             </div>

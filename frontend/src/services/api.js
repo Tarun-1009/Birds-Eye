@@ -154,3 +154,11 @@ export const seedDatabase = async () => {
   return data;
 };
 
+// Clear All Feeds, Crops, and Storage Archive
+export const clearAllVideosApi = async () => {
+  const res = await fetch(`${API_BASE_URL}/videos`, { method: 'DELETE' });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to clear feeds');
+  return data;
+};
+

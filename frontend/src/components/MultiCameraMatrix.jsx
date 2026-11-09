@@ -1,8 +1,8 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Play, Pause, Volume2, VolumeX, Video } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Video, UploadCloud, ArrowRight } from 'lucide-react';
 import { getVideoStreamUrl } from '../services/api';
 
-export default function MultiCameraMatrix({ cameras = [], seekTarget }) {
+export default function MultiCameraMatrix({ cameras = [], seekTarget, onNavigateToIngestion }) {
   const videoRefs = useRef({});
   const [isPlaying, setIsPlaying] = useState({});
   const [isMuted, setIsMuted] = useState({});
@@ -67,16 +67,71 @@ export default function MultiCameraMatrix({ cameras = [], seekTarget }) {
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const displayCameras = cameras.length > 0 ? cameras.slice(0, 4) : [
-    { camera_id: 'CAM-01', name: 'Front Courtyard (Cam 1)' },
-    { camera_id: 'CAM-02', name: 'North Gate (Cam 2)' },
-    { camera_id: 'CAM-03', name: 'West Wing Corridor (Cam 3)' },
-    { camera_id: 'CAM-04', name: 'Central Plaza (Cam 4)' },
-  ];
+  // If no cameras uploaded, show clean prompt instead of 4 blank video cards!
+  if (!cameras || cameras.length === 0) {
+    return (
+      <div className="section-box-card" style={{
+        padding: '3.5rem 2rem',
+        textAlign: 'center',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '1rem',
+        minHeight: '360px',
+        backgroundColor: '#ffffff'
+      }}>
+        <div style={{
+          width: '64px',
+          height: '64px',
+          borderRadius: '50%',
+          backgroundColor: '#eff6ff',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#2563eb'
+        }}>
+          <UploadCloud size={32} />
+        </div>
+        <div>
+          <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#0f172a', margin: '0 0 0.4rem 0' }}>
+            No Camera Feeds Uploaded Yet
+          </h3>
+          <p style={{ fontSize: '0.84rem', color: '#64748b', margin: 0, maxWidth: '440px', lineHeight: 1.5 }}>
+            Upload your surveillance video files to view live camera feeds and track targets across camera angles.
+          </p>
+        </div>
+        {onNavigateToIngestion && (
+          <button
+            onClick={onNavigateToIngestion}
+            className="continue-blue-btn"
+            style={{
+              padding: '0.55rem 1.35rem',
+              fontSize: '0.86rem',
+              marginTop: '0.5rem',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            <span>Upload Camera Feeds</span>
+            <ArrowRight size={15} />
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
-    <div className="cctv-quad-grid">
-      {displayCameras.map((cam, idx) => {
+    <div
+      className="cctv-quad-grid"
+      style={{
+        display: 'grid',
+        gridTemplateColumns: cameras.length === 1 ? '1fr' : 'repeat(auto-fit, minmax(280px, 1fr))',
+        gap: '1rem'
+      }}
+    >
+      {cameras.map((cam, idx) => {
         const camId = cam.camera_id;
         const videoSrc = getVideoStreamUrl(camId);
         const isHighlighted = highlightedCam === camId;
@@ -94,7 +149,7 @@ export default function MultiCameraMatrix({ cameras = [], seekTarget }) {
               </div>
               <div className="cctv-live-tag mono">
                 <span className="rec-dot" />
-                <span>LIVE · CH-0{idx + 1}</span>
+                <span>FEED · CH-0{idx + 1}</span>
               </div>
             </div>
 

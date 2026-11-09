@@ -34,11 +34,15 @@ TARGET_CLASSES = {
     2: "car",
     3: "motorcycle",
     5: "bus",
-    7: "truck",
+    7: "truck",          # Trucks & delivery vans
     24: "backpack",
     26: "handbag",
-    28: "suitcase"
+    28: "suitcase",      # Suitcases & portable coolers / storage cases
+    72: "cooler"         # COCO 72 refrigerator / cooler / ice chests
 }
+
+VEHICLE_CLASSES = {1, 2, 3, 5, 7}
+OBJECT_CLASSES = {24, 26, 28, 72}
 
 # Carried item classes to associate with tracked persons
 CARRIED_ITEM_CLASSES = {

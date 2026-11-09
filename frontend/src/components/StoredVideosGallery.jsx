@@ -25,6 +25,7 @@ export default function StoredVideosGallery({
   onDeleteVideo, 
   onDeleteTarget,
   onLaunchDetection,
+  onClearAll,
   isRefreshing 
 }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -79,6 +80,30 @@ export default function StoredVideosGallery({
             >
               <RefreshCw size={15} className={isRefreshing ? 'spin' : ''} />
             </button>
+
+            {/* Clear All Feeds Button */}
+            {videos.length > 0 && onClearAll && (
+              <button
+                onClick={onClearAll}
+                className="feed-remove-btn"
+                style={{
+                  padding: '0.42rem 0.75rem',
+                  borderRadius: '6px',
+                  border: '1px solid #fecaca',
+                  backgroundColor: '#fef2f2',
+                  color: '#dc2626',
+                  fontSize: '0.76rem',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px'
+                }}
+                title="Purge all feeds and tracking records"
+              >
+                <Trash2 size={13} />
+                <span>Clear All Feeds</span>
+              </button>
+            )}
           </div>
         </div>
       </div>

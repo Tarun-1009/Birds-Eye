@@ -52,3 +52,13 @@ yarn-error.log*
 .idea/
 .DS_Store
 Thumbs.db
+
+# IEEE Report & LaTeX Artifacts
+REPORT_IEEE.*
+latex_figures/
+make_latex_figures.py
+*.aux
+*.log
+*.out
+*.synctex.gz
+

@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import db from '../db/db.js';
 import { config } from '../config/index.js';
@@ -173,26 +174,55 @@ export const handleUpload = (req, res) => {
   });
 };
 
-// 4. Delete video
+// 4. Delete video & purge associated tracking records
 export const deleteVideo = (req, res) => {
   const { id } = req.params;
   const data = getMetadata();
-  const index = data.videos.findIndex((v) => v.id === id);
+  let removedFilename = null;
+  const index = data.videos.findIndex((v) => v.id === id || v.filename === id || v.originalName === id);
 
   if (index !== -1) {
     const [removed] = data.videos.splice(index, 1);
-    const filePath = path.join(VIDEOS_DIR, removed.filename);
-    if (fs.existsSync(filePath)) {
-      try { fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
-    }
+    removedFilename = removed.filename;
     saveMetadata(data);
   }
 
-  // Also remove from SQLite cameras & associated sightings
-  db.prepare('DELETE FROM cameras WHERE camera_id = ?').run(id);
-  db.prepare('DELETE FROM sightings WHERE camera_id = ?').run(id);
+  // Find camera from DB
+  const camera = db.prepare('SELECT * FROM cameras WHERE camera_id = ? OR video_path LIKE ?').get(id, `%${id}%`);
+  const actualCamId = camera ? camera.camera_id : id;
+  const camVideoFile = camera ? path.basename(camera.video_path) : removedFilename;
 
-  return res.json({ success: true, message: `Camera feed '${id}' deleted.` });
+  // 1. Remove video file from disk (both uploads/videos and data/videos)
+  if (camVideoFile) {
+    const p1 = path.join(VIDEOS_DIR, camVideoFile);
+    const p2 = path.join(config.videosDir, camVideoFile);
+    if (fs.existsSync(p1)) { try { fs.unlinkSync(p1); } catch (e) {} }
+    if (fs.existsSync(p2)) { try { fs.unlinkSync(p2); } catch (e) {} }
+  }
+
+  // 2. Remove crop files associated with this camera's sightings
+  try {
+    const crops = db.prepare('SELECT crop_path FROM sightings WHERE camera_id = ?').all(actualCamId);
+    crops.forEach((c) => {
+      if (c.crop_path) {
+        const cropFile = path.basename(c.crop_path);
+        const cropOnDisk = path.join(config.cropsDir, cropFile);
+        if (fs.existsSync(cropOnDisk)) {
+          try { fs.unlinkSync(cropOnDisk); } catch (e) {}
+        }
+      }
+    });
+  } catch (e) {}
+
+  // 3. Delete sightings and camera row
+  db.prepare('DELETE FROM sightings WHERE camera_id = ?').run(actualCamId);
+  db.prepare('DELETE FROM cameras WHERE camera_id = ?').run(actualCamId);
+
+  // 4. Prune orphaned identities and refresh sightings counts
+  db.prepare('DELETE FROM global_identities WHERE global_id NOT IN (SELECT DISTINCT global_id FROM sightings WHERE global_id IS NOT NULL)').run();
+  db.prepare('UPDATE global_identities SET total_sightings = (SELECT COUNT(*) FROM sightings WHERE sightings.global_id = global_identities.global_id)').run();
+
+  return res.json({ success: true, message: `Camera feed '${actualCamId}' and its tracking records purged.` });
 };
 
 // 5. Delete Target
@@ -308,7 +338,8 @@ export const getIdentities = (req, res) => {
         g.*,
         (SELECT s.crop_path FROM sightings s WHERE s.global_id = g.global_id ORDER BY s.timestamp_sec ASC LIMIT 1) as initial_crop_path,
         (SELECT COUNT(*) FROM sightings s WHERE s.global_id = g.global_id) as total_sightings,
-        (SELECT GROUP_CONCAT(DISTINCT s.camera_id) FROM sightings s WHERE s.global_id = g.global_id) as observed_cameras
+        (SELECT GROUP_CONCAT(DISTINCT s.camera_id) FROM sightings s WHERE s.global_id = g.global_id) as observed_cameras,
+        (SELECT GROUP_CONCAT(DISTINCT s.orientation) FROM sightings s WHERE s.global_id = g.global_id) as observed_orientations
       FROM global_identities g
       ORDER BY g.first_seen_timestamp ASC
     `;
@@ -403,16 +434,64 @@ export const streamVideo = (req, res) => {
   }
 };
 
-// 11. Run Multi-Angle Detection Pipeline
-export const runDetection = (req, res) => {
+// 11. Run Multi-Angle Detection Pipeline (invokes Python AI engine on uploaded feeds)
+export const runDetection = async (req, res) => {
   try {
-    const sightings = db.prepare('SELECT * FROM sightings ORDER BY timestamp_sec ASC LIMIT 50').all();
-    const identities = db.prepare('SELECT * FROM global_identities ORDER BY first_seen_timestamp ASC').all();
+    const pythonExe = path.resolve(__dirname, '../../../ai_engine/venv/Scripts/python.exe');
+    const scriptPath = path.resolve(__dirname, '../../../ai_engine/run_pipeline.py');
+
+    if (fs.existsSync(pythonExe) && fs.existsSync(scriptPath)) {
+      console.log('[API] Executing Python AI detection pipeline...');
+      const sampleStep = req.body?.sampleStep || '10';
+      const conf = req.body?.conf || '0.25';
+
+      const py = spawn(pythonExe, [scriptPath, '--sample-step', String(sampleStep), '--conf', String(conf), '--clear'], {
+        cwd: path.resolve(__dirname, '../../../'),
+        env: { ...process.env, PYTHONUNBUFFERED: '1' }
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      py.stdout.on('data', (d) => { stdout += d.toString(); });
+      py.stderr.on('data', (d) => { stderr += d.toString(); });
+
+      await new Promise((resolve) => {
+        py.on('close', (code) => {
+          console.log(`[API] AI Pipeline closed with exit code ${code}`);
+          resolve();
+        });
+      });
+    }
+
+    const sightings = db.prepare(`
+      SELECT 
+        s.*,
+        c.name as camera_name,
+        g.label as identity_label,
+        g.dominant_color
+      FROM sightings s
+      LEFT JOIN cameras c ON s.camera_id = c.camera_id
+      LEFT JOIN global_identities g ON s.global_id = g.global_id
+      ORDER BY s.timestamp_sec ASC, s.frame_index ASC
+    `).all();
+
+    const identities = db.prepare(`
+      SELECT 
+        g.*,
+        (SELECT s.crop_path FROM sightings s WHERE s.global_id = g.global_id ORDER BY s.timestamp_sec ASC LIMIT 1) as initial_crop_path,
+        (SELECT COUNT(*) FROM sightings s WHERE s.global_id = g.global_id) as total_sightings,
+        (SELECT GROUP_CONCAT(DISTINCT s.camera_id) FROM sightings s WHERE s.global_id = g.global_id) as observed_cameras,
+        (SELECT GROUP_CONCAT(DISTINCT s.orientation) FROM sightings s WHERE s.global_id = g.global_id) as observed_orientations
+      FROM global_identities g
+      ORDER BY g.first_seen_timestamp ASC
+    `).all();
+
     const cameras = db.prepare('SELECT * FROM cameras ORDER BY camera_id ASC').all();
 
-    res.json({
+    return res.json({
       success: true,
-      message: 'Detection sequence query successful',
+      message: 'Detection sequence pipeline completed successfully',
       camerasCount: cameras.length,
       sightingsCount: sightings.length,
       identitiesCount: identities.length,
@@ -420,7 +499,7 @@ export const runDetection = (req, res) => {
       identities,
     });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    return res.status(500).json({ success: false, error: err.message });
   }
 };
 
@@ -444,23 +523,64 @@ export const seedDatabase = (req, res) => {
   }
 };
 
-
-// 13. Clear All Feeds and Archive
+// 13. Clear All Feeds, Crops, and Storage Archive
 export const clearAllVideos = (req, res) => {
   try {
     const data = getMetadata();
-    data.videos.forEach((v) => {
-      const filePath = path.join(VIDEOS_DIR, v.filename);
-      if (fs.existsSync(filePath)) {
-        try { fs.unlinkSync(filePath); } catch (e) {}
+    // 1. Delete all uploaded video files
+    try {
+      if (fs.existsSync(VIDEOS_DIR)) {
+        fs.readdirSync(VIDEOS_DIR).forEach((f) => {
+          if (f !== '.gitkeep') {
+            try { fs.unlinkSync(path.join(VIDEOS_DIR, f)); } catch (e) {}
+          }
+        });
       }
-    });
+    } catch (e) {}
+
+    // 2. Delete mirrored video files
+    try {
+      if (fs.existsSync(config.videosDir)) {
+        fs.readdirSync(config.videosDir).forEach((f) => {
+          if (f !== '.gitkeep') {
+            try { fs.unlinkSync(path.join(config.videosDir, f)); } catch (e) {}
+          }
+        });
+      }
+    } catch (e) {}
+
+    // 3. Delete target images
+    try {
+      if (fs.existsSync(TARGETS_DIR)) {
+        fs.readdirSync(TARGETS_DIR).forEach((f) => {
+          if (f !== '.gitkeep') {
+            try { fs.unlinkSync(path.join(TARGETS_DIR, f)); } catch (e) {}
+          }
+        });
+      }
+    } catch (e) {}
+
+    // 4. Delete all crop images
+    try {
+      if (fs.existsSync(config.cropsDir)) {
+        fs.readdirSync(config.cropsDir).forEach((f) => {
+          if (f !== '.gitkeep') {
+            try { fs.unlinkSync(path.join(config.cropsDir, f)); } catch (e) {}
+          }
+        });
+      }
+    } catch (e) {}
+
     data.videos = [];
+    data.target = null;
     saveMetadata(data);
+
+    // 5. Purge database tables
     db.prepare('DELETE FROM sightings').run();
     db.prepare('DELETE FROM global_identities').run();
     db.prepare('DELETE FROM cameras').run();
-    return res.json({ success: true, message: 'All camera streams and archive vault videos cleared.' });
+
+    return res.json({ success: true, message: 'All camera streams, crops, and tracking records purged.' });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }

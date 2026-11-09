@@ -17,7 +17,7 @@ import defaultTargetImg from '../assets/default_target.jpg';
 import camThumb1 from '../assets/cam_thumb_1.jpg';
 import camThumb2 from '../assets/cam_thumb_2.jpg';
 import camThumb3 from '../assets/cam_thumb_3.jpg';
-import { uploadMedia } from '../services/api';
+import { uploadMedia, runDetectionApi } from '../services/api';
 
 export default function VideoIngestion({ 
   onContinueToStudio, 
@@ -25,39 +25,43 @@ export default function VideoIngestion({
   onUploadSuccess, 
   showToast 
 }) {
-  // Staged uploads & active target
+  // Staged uploads & active target (target is completely OPTIONAL)
   const [stagedVideos, setStagedVideos] = useState([]);
   const [targetPhoto, setTargetPhoto] = useState(null);
-  const [targetPreview, setTargetPreview] = useState(defaultTargetImg);
-  const [targetName, setTargetName] = useState('Target 01');
-  const [targetType, setTargetType] = useState('Person');
+  const [targetPreview, setTargetPreview] = useState(null);
+  const [targetName, setTargetName] = useState('All Targets');
+  const [targetType, setTargetType] = useState('All');
   const [activeTargetTab, setActiveTargetTab] = useState('photo'); // 'photo' | 'class'
   const [isUploading, setIsUploading] = useState(false);
 
-  // Default feeds matching the reference mockup
-  const [feeds, setFeeds] = useState([
-    {
-      id: 'cam-01',
-      title: 'Camera 01 · Front entrance',
-      size: '245 MB',
-      thumb: camThumb1,
-      status: 'Completed'
-    },
-    {
-      id: 'cam-02',
-      title: 'Camera 02 · Side corridor',
-      size: '198 MB',
-      thumb: camThumb2,
-      status: 'Completed'
-    },
-    {
-      id: 'cam-03',
-      title: 'Camera 03 · Parking lot',
-      size: '276 MB',
-      thumb: camThumb3,
-      status: 'Completed'
+  // Feeds populated from stored videos or staged uploads
+  const [feeds, setFeeds] = useState(() => {
+    if (storedVideos && storedVideos.length > 0) {
+      return storedVideos.map((v, idx) => ({
+        id: v.id || `cam-0${idx + 1}`,
+        title: `${v.cameraName || `Camera 0${idx + 1}`} · ${v.originalName || ''}`,
+        size: v.formattedSize || '30 MB',
+        thumb: idx % 3 === 0 ? camThumb1 : idx % 3 === 1 ? camThumb2 : camThumb3,
+        status: 'Active Feed'
+      }));
     }
-  ]);
+    return [];
+  });
+
+  // Sync when storedVideos change from server
+  React.useEffect(() => {
+    if (stagedVideos.length === 0 && storedVideos && storedVideos.length > 0) {
+      setFeeds(storedVideos.map((v, idx) => ({
+        id: v.id || `cam-0${idx + 1}`,
+        title: `${v.cameraName || `Camera 0${idx + 1}`} · ${v.originalName || ''}`,
+        size: v.formattedSize || '30 MB',
+        thumb: idx % 3 === 0 ? camThumb1 : idx % 3 === 1 ? camThumb2 : camThumb3,
+        status: 'Active Feed'
+      })));
+    } else if (stagedVideos.length === 0 && (!storedVideos || storedVideos.length === 0)) {
+      setFeeds([]);
+    }
+  }, [storedVideos]);
 
   const videoFileInputRef = useRef(null);
   const targetFileInputRef = useRef(null);
@@ -90,7 +94,7 @@ export default function VideoIngestion({
         title: `Camera 0${feeds.length + idx + 1} · ${file.name.replace(/\.[^/.]+$/, '')}`,
         size: sizeMB,
         thumb: camThumb1,
-        status: 'Completed',
+        status: 'Staged for Upload',
         file: file
       };
     });
@@ -102,6 +106,7 @@ export default function VideoIngestion({
 
   const removeFeed = (id) => {
     setFeeds(prev => prev.filter(f => f.id !== id));
+    setStagedVideos(prev => prev.filter((_, idx) => `staged-${idx}` !== id));
   };
 
   const updateFeedTitle = (id, newTitle) => {
@@ -118,7 +123,7 @@ export default function VideoIngestion({
     }
   };
 
-  // Handle Continue to Detection Studio
+  // Handle Continue to Detection Studio & Run AI Pipeline
   const handleProceed = async () => {
     if (stagedVideos.length > 0 || targetPhoto) {
       setIsUploading(true);
@@ -129,9 +134,13 @@ export default function VideoIngestion({
           formData.append('target', targetPhoto);
         }
         await uploadMedia(formData);
+        showToast?.('Uploaded video feeds. Running AI detection & orientation tracking...', 'info');
+        await runDetectionApi({ sampleStep: 10, conf: 0.25 });
+        showToast?.('AI detection and rotation-invariant tracking complete!', 'success');
         onUploadSuccess?.();
       } catch (err) {
-        console.warn('Upload completed with warning:', err.message);
+        console.warn('Upload/detection warning:', err.message);
+        showToast?.(err.message || 'Processing feeds...', 'info');
       } finally {
         setIsUploading(false);
       }
@@ -287,11 +296,33 @@ export default function VideoIngestion({
           </div>
         </div>
 
-        {/* Right Column: Target Reference */}
+        {/* Right Column: Target Reference (Completely Optional) */}
         <div className="section-box-card">
-          <div className="section-box-header">
-            <User size={18} color="#1769FF" />
-            <span>Target reference</span>
+          <div className="section-box-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <User size={18} color="#1769FF" />
+              <span>Target reference</span>
+            </div>
+            <span style={{ fontSize: '0.72rem', backgroundColor: '#f1f5f9', color: '#64748b', padding: '2px 8px', borderRadius: '999px', fontWeight: 600 }}>
+              Optional
+            </span>
+          </div>
+
+          {/* Optional notice */}
+          <div style={{
+            padding: '0.65rem 0.8rem',
+            borderRadius: '6px',
+            backgroundColor: '#eff6ff',
+            border: '1px solid #bfdbfe',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '0.55rem',
+            marginBottom: '0.85rem'
+          }}>
+            <Info size={16} color="#2563eb" style={{ flexShrink: 0, marginTop: '2px' }} />
+            <div style={{ fontSize: '0.76rem', color: '#1e40af', lineHeight: 1.4 }}>
+              <b>Target photo is optional.</b> If left blank, the AI pipeline scans all feeds and extracts <b>the complete list of all detected objects and persons</b>.
+            </div>
           </div>
 
           {/* Target Tabs: Upload Photo / Object Class */}
@@ -301,91 +332,119 @@ export default function VideoIngestion({
               onClick={() => setActiveTargetTab('photo')}
             >
               <ImageIcon size={15} />
-              <span>Upload photo</span>
+              <span>Target photo (Optional)</span>
             </button>
             <button 
               className={`target-tab-btn ${activeTargetTab === 'class' ? 'active' : ''}`}
               onClick={() => setActiveTargetTab('class')}
             >
               <Box size={15} />
-              <span>Object class</span>
+              <span>Filter by class</span>
             </button>
           </div>
 
           {activeTargetTab === 'photo' ? (
-            <div className="target-specimen-layout">
-              {/* Target Image Preview & Replace */}
-              <div className="target-preview-box">
-                <div className="target-preview-img-wrap">
-                  <img 
-                    src={targetPreview} 
-                    alt="Target Reference" 
-                  />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              {targetPreview ? (
+                <div className="target-specimen-layout">
+                  <div className="target-preview-box">
+                    <div className="target-preview-img-wrap">
+                      <img 
+                        src={targetPreview} 
+                        alt="Target Reference" 
+                      />
+                    </div>
+                    <input 
+                      type="file" 
+                      ref={targetFileInputRef}
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={handleTargetChange}
+                    />
+                    <button 
+                      className="replace-image-btn"
+                      onClick={() => targetFileInputRef.current?.click()}
+                    >
+                      <RotateCw size={13} />
+                      <span>Replace</span>
+                    </button>
+                    <button 
+                      className="replace-image-btn"
+                      onClick={() => {
+                        setTargetPhoto(null);
+                        setTargetPreview(null);
+                      }}
+                      style={{ marginTop: '4px', color: '#ef4444' }}
+                    >
+                      <X size={13} />
+                      <span>Remove</span>
+                    </button>
+                  </div>
+
+                  <div className="target-fields-col">
+                    <div className="form-group-clean">
+                      <label className="form-label-clean">Target Label (Optional)</label>
+                      <input 
+                        type="text" 
+                        value={targetName}
+                        onChange={(e) => setTargetName(e.target.value)}
+                        placeholder="e.g. Person of interest"
+                        className="form-input-clean" 
+                      />
+                    </div>
+                  </div>
                 </div>
-                <input 
-                  type="file" 
-                  ref={targetFileInputRef}
-                  accept="image/*"
-                  style={{ display: 'none' }}
-                  onChange={handleTargetChange}
-                />
-                <button 
-                  className="replace-image-btn"
+              ) : (
+                <div 
                   onClick={() => targetFileInputRef.current?.click()}
+                  style={{
+                    border: '2px dashed #cbd5e1',
+                    borderRadius: '8px',
+                    padding: '2rem 1.5rem',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    backgroundColor: '#f8fafc',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.45rem',
+                    transition: 'all 0.15s ease'
+                  }}
                 >
-                  <RotateCw size={13} />
-                  <span>Replace image</span>
-                </button>
-              </div>
-
-              {/* Target Name & Type Fields */}
-              <div className="target-fields-col">
-                <div className="form-group-clean">
-                  <label className="form-label-clean">Target name</label>
                   <input 
-                    type="text" 
-                    value={targetName}
-                    onChange={(e) => setTargetName(e.target.value)}
-                    className="form-input-clean" 
+                    type="file" 
+                    ref={targetFileInputRef}
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={handleTargetChange}
                   />
+                  <div style={{ width: '42px', height: '42px', borderRadius: '50%', backgroundColor: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
+                    <UploadCloud size={20} />
+                  </div>
+                  <span style={{ fontSize: '0.84rem', fontWeight: 600, color: '#334155' }}>
+                    Upload specific target photo (Optional)
+                  </span>
+                  <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>
+                    Skip this to detect and list all persons and objects automatically
+                  </span>
                 </div>
-
-                <div className="form-group-clean">
-                  <label className="form-label-clean">Target type</label>
-                  <select 
-                    value={targetType}
-                    onChange={(e) => setTargetType(e.target.value)}
-                    className="form-input-clean"
-                  >
-                    <option value="Person">👤 Person</option>
-                    <option value="Vehicle">🚗 Vehicle</option>
-                    <option value="Object">📦 Object / Luggage</option>
-                  </select>
-                </div>
-
-                <div className="form-helper-text">
-                  <Info size={14} color="#94a3b8" />
-                  <span>Used to match appearance across camera feeds.</span>
-                </div>
-              </div>
+              )}
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem 0' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '0.5rem 0' }}>
               <div className="form-group-clean">
-                <label className="form-label-clean">Select Target Category</label>
+                <label className="form-label-clean">Target Category Filter</label>
                 <select 
                   className="form-input-clean"
                   value={targetType}
                   onChange={(e) => setTargetType(e.target.value)}
                 >
-                  <option value="Person">Person (Pedestrian, Visitor, Guard)</option>
-                  <option value="Vehicle">Vehicle (Car, Van, SUV, Truck, Motorcycle)</option>
-                  <option value="Object">Carried Object (Backpack, Bag, Suitcase, Package)</option>
+                  <option value="All">All Categories (Persons, Vehicles, Objects)</option>
+                  <option value="Person">Persons only (Pedestrians, Staff)</option>
+                  <option value="Vehicle">Vehicles only (Cars, Vans, Motorcycles)</option>
+                  <option value="Object">Carried Objects (Backpacks, Bags, Suitcases)</option>
                 </select>
-              </div>
-              <div className="form-helper-text">
-                <Info size={14} color="#94a3b8" />
-                <span>Zero-shot multi-angle detector will match objects belonging to this category.</span>
               </div>
             </div>
           )}
@@ -406,9 +465,9 @@ export default function VideoIngestion({
         <button 
           onClick={handleProceed}
           className="continue-blue-btn"
-          disabled={isUploading}
+          disabled={isUploading || feeds.length === 0}
         >
-          <span>{isUploading ? 'Preparing Feeds...' : 'Continue to Detection Studio'}</span>
+          <span>{isUploading ? 'Analyzing Feeds...' : 'Detect All Objects & View Sequence'}</span>
           <ArrowRight size={16} />
         </button>
       </div>

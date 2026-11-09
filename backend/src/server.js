@@ -29,9 +29,11 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve uploaded video and image files statically
+// Serve uploaded video, crop, and image files statically
 app.use('/uploads/videos', express.static(VIDEOS_DIR));
 app.use('/uploads/targets', express.static(TARGETS_DIR));
+app.use('/crops', express.static(config.cropsDir));
+app.use('/data/crops', express.static(config.cropsDir));
 
 // API Routes
 app.use('/api', apiRoutes);
