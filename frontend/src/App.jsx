@@ -232,6 +232,10 @@ export default function App() {
                 loadCoreData();
                 loadSightings();
               }}
+              onDeleteStoredVideo={async () => {
+                await loadCoreData();
+                await loadSightings();
+              }}
               showToast={showToast}
             />
           )}

@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -16,7 +16,21 @@ export function getDatabase(customPath) {
     fs.mkdirSync(parentDir, { recursive: true });
   }
 
-  const db = new Database(targetPath);
+  const db = new DatabaseSync(targetPath);
+
+  // Provide compatibility methods matching better-sqlite3
+  db.pragma = (str) => db.exec(`PRAGMA ${str};`);
+  db.transaction = (fn) => (...args) => {
+    db.exec('BEGIN');
+    try {
+      const result = fn(...args);
+      db.exec('COMMIT');
+      return result;
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  };
   
   // WAL mode for non-blocking concurrent reads and writes
   db.pragma('journal_mode = WAL');

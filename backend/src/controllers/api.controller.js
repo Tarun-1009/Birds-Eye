@@ -106,13 +106,34 @@ export const handleUpload = (req, res) => {
     VALUES (?, ?, ?, ?, 'ONLINE')
   `);
 
+  // Determine highest existing camera number to guarantee unique sequential IDs
+  let maxCamNum = 0;
+  try {
+    const existingCams = db.prepare('SELECT camera_id FROM cameras').all();
+    existingCams.forEach((c) => {
+      const m = (c.camera_id || '').match(/CAM-(\d+)/i);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (n > maxCamNum) maxCamNum = n;
+      }
+    });
+  } catch (e) {}
+
+  currentData.videos.forEach((v) => {
+    const m = (v.id || '').match(/CAM-(\d+)/i);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (n > maxCamNum) maxCamNum = n;
+    }
+  });
+
   videoFiles.forEach((file, index) => {
-    const existingCamCount = db.prepare('SELECT COUNT(*) as count FROM cameras').get().count;
-    const camId = `CAM-${String(existingCamCount + index + 1).padStart(2, '0')}`;
+    maxCamNum += 1;
+    const camId = `CAM-${String(maxCamNum).padStart(2, '0')}`;
     const cameraName =
       cameraNames && cameraNames[index]
         ? cameraNames[index].trim()
-        : `Camera ${existingCamCount + index + 1}`;
+        : `Camera ${maxCamNum}`;
 
     // Also copy / link into data/videos/ if not already there
     const dataVideoPath = path.join(config.videosDir, file.filename);
@@ -178,51 +199,86 @@ export const handleUpload = (req, res) => {
 export const deleteVideo = (req, res) => {
   const { id } = req.params;
   const data = getMetadata();
-  let removedFilename = null;
-  const index = data.videos.findIndex((v) => v.id === id || v.filename === id || v.originalName === id);
 
-  if (index !== -1) {
-    const [removed] = data.videos.splice(index, 1);
-    removedFilename = removed.filename;
+  // Find all matching videos in metadata by id, filename, or originalName
+  const removedVideos = [];
+  data.videos = data.videos.filter((v) => {
+    if (v.id === id || v.filename === id || v.originalName === id) {
+      removedVideos.push(v);
+      return false;
+    }
+    return true;
+  });
+
+  if (removedVideos.length > 0) {
     saveMetadata(data);
   }
 
-  // Find camera from DB
-  const camera = db.prepare('SELECT * FROM cameras WHERE camera_id = ? OR video_path LIKE ?').get(id, `%${id}%`);
-  const actualCamId = camera ? camera.camera_id : id;
-  const camVideoFile = camera ? path.basename(camera.video_path) : removedFilename;
+  // Find camera(s) from DB matching id or filename
+  let camera = null;
+  try {
+    camera = db.prepare('SELECT * FROM cameras WHERE camera_id = ? OR video_path LIKE ?').get(id, `%${id}%`);
+  } catch (e) {}
+
+  const camIdsToPurge = new Set();
+  if (camera) {
+    camIdsToPurge.add(camera.camera_id);
+  }
+  if (id.startsWith('CAM-')) {
+    camIdsToPurge.add(id);
+  }
+  removedVideos.forEach((v) => {
+    if (v.id && v.id.startsWith('CAM-')) {
+      camIdsToPurge.add(v.id);
+    }
+  });
+
+  // Gather filenames to remove from disk
+  const filesToDelete = new Set();
+  removedVideos.forEach((v) => {
+    if (v.filename) filesToDelete.add(v.filename);
+  });
+  if (camera && camera.video_path) {
+    filesToDelete.add(path.basename(camera.video_path));
+  }
 
   // 1. Remove video file from disk (both uploads/videos and data/videos)
-  if (camVideoFile) {
+  filesToDelete.forEach((camVideoFile) => {
     const p1 = path.join(VIDEOS_DIR, camVideoFile);
     const p2 = path.join(config.videosDir, camVideoFile);
     if (fs.existsSync(p1)) { try { fs.unlinkSync(p1); } catch (e) {} }
     if (fs.existsSync(p2)) { try { fs.unlinkSync(p2); } catch (e) {} }
-  }
+  });
 
-  // 2. Remove crop files associated with this camera's sightings
-  try {
-    const crops = db.prepare('SELECT crop_path FROM sightings WHERE camera_id = ?').all(actualCamId);
-    crops.forEach((c) => {
-      if (c.crop_path) {
-        const cropFile = path.basename(c.crop_path);
-        const cropOnDisk = path.join(config.cropsDir, cropFile);
-        if (fs.existsSync(cropOnDisk)) {
-          try { fs.unlinkSync(cropOnDisk); } catch (e) {}
+  // 2. Remove crop files & DB records for each purged camera
+  camIdsToPurge.forEach((camId) => {
+    try {
+      const crops = db.prepare('SELECT crop_path FROM sightings WHERE camera_id = ?').all(camId);
+      crops.forEach((c) => {
+        if (c.crop_path) {
+          const cropFile = path.basename(c.crop_path);
+          const cropOnDisk = path.join(config.cropsDir, cropFile);
+          if (fs.existsSync(cropOnDisk)) {
+            try { fs.unlinkSync(cropOnDisk); } catch (e) {}
+          }
         }
-      }
-    });
+      });
+    } catch (e) {}
+
+    try {
+      db.prepare('DELETE FROM sightings WHERE camera_id = ?').run(camId);
+      db.prepare('DELETE FROM cameras WHERE camera_id = ?').run(camId);
+    } catch (e) {}
+  });
+
+  // 3. Prune orphaned identities and refresh sightings counts
+  try {
+    db.prepare('DELETE FROM global_identities WHERE global_id NOT IN (SELECT DISTINCT global_id FROM sightings WHERE global_id IS NOT NULL)').run();
+    db.prepare('UPDATE global_identities SET total_sightings = (SELECT COUNT(*) FROM sightings WHERE sightings.global_id = global_identities.global_id)').run();
   } catch (e) {}
 
-  // 3. Delete sightings and camera row
-  db.prepare('DELETE FROM sightings WHERE camera_id = ?').run(actualCamId);
-  db.prepare('DELETE FROM cameras WHERE camera_id = ?').run(actualCamId);
-
-  // 4. Prune orphaned identities and refresh sightings counts
-  db.prepare('DELETE FROM global_identities WHERE global_id NOT IN (SELECT DISTINCT global_id FROM sightings WHERE global_id IS NOT NULL)').run();
-  db.prepare('UPDATE global_identities SET total_sightings = (SELECT COUNT(*) FROM sightings WHERE sightings.global_id = global_identities.global_id)').run();
-
-  return res.json({ success: true, message: `Camera feed '${actualCamId}' and its tracking records purged.` });
+  const label = removedVideos[0]?.originalName || removedVideos[0]?.cameraName || id;
+  return res.json({ success: true, message: `Camera feed '${label}' removed.` });
 };
 
 // 5. Delete Target

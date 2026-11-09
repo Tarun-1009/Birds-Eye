@@ -270,7 +270,7 @@ export default function StoredVideosGallery({
                   </button>
 
                   <button
-                    onClick={() => onDeleteVideo(video.id, video.originalName)}
+                    onClick={() => onDeleteVideo(video.filename || video.id, video.originalName)}
                     className="feed-remove-btn"
                     style={{ padding: '6px 8px', border: '1px solid #e2e8f0', borderRadius: '6px' }}
                     title="Remove feed from vault"

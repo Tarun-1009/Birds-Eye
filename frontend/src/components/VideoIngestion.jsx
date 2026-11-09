@@ -17,12 +17,13 @@ import defaultTargetImg from '../assets/default_target.jpg';
 import camThumb1 from '../assets/cam_thumb_1.jpg';
 import camThumb2 from '../assets/cam_thumb_2.jpg';
 import camThumb3 from '../assets/cam_thumb_3.jpg';
-import { uploadMedia, runDetectionApi } from '../services/api';
+import { uploadMedia, runDetectionApi, deleteVideoFile } from '../services/api';
 
 export default function VideoIngestion({ 
   onContinueToStudio, 
   storedVideos = [], 
   onUploadSuccess, 
+  onDeleteStoredVideo,
   showToast 
 }) {
   // Staged uploads & active target (target is completely OPTIONAL)
@@ -34,32 +35,28 @@ export default function VideoIngestion({
   const [activeTargetTab, setActiveTargetTab] = useState('photo'); // 'photo' | 'class'
   const [isUploading, setIsUploading] = useState(false);
 
+  // Helper to map stored videos to feed format
+  const mapStoredVideosToFeeds = (videos) => {
+    return (videos || []).map((v, idx) => ({
+      id: v.filename || v.id || `stored-${idx}`,
+      cameraId: v.id || `CAM-${String(idx + 1).padStart(2, '0')}`,
+      filename: v.filename,
+      originalName: v.originalName || '',
+      title: `${v.cameraName || `Camera ${idx + 1}`} · ${v.originalName || ''}`,
+      size: v.formattedSize || '30 MB',
+      thumb: idx % 3 === 0 ? camThumb1 : idx % 3 === 1 ? camThumb2 : camThumb3,
+      status: 'Active Feed',
+      isStored: true,
+    }));
+  };
+
   // Feeds populated from stored videos or staged uploads
-  const [feeds, setFeeds] = useState(() => {
-    if (storedVideos && storedVideos.length > 0) {
-      return storedVideos.map((v, idx) => ({
-        id: v.id || `cam-0${idx + 1}`,
-        title: `${v.cameraName || `Camera 0${idx + 1}`} · ${v.originalName || ''}`,
-        size: v.formattedSize || '30 MB',
-        thumb: idx % 3 === 0 ? camThumb1 : idx % 3 === 1 ? camThumb2 : camThumb3,
-        status: 'Active Feed'
-      }));
-    }
-    return [];
-  });
+  const [feeds, setFeeds] = useState(() => mapStoredVideosToFeeds(storedVideos));
 
   // Sync when storedVideos change from server
   React.useEffect(() => {
-    if (stagedVideos.length === 0 && storedVideos && storedVideos.length > 0) {
-      setFeeds(storedVideos.map((v, idx) => ({
-        id: v.id || `cam-0${idx + 1}`,
-        title: `${v.cameraName || `Camera 0${idx + 1}`} · ${v.originalName || ''}`,
-        size: v.formattedSize || '30 MB',
-        thumb: idx % 3 === 0 ? camThumb1 : idx % 3 === 1 ? camThumb2 : camThumb3,
-        status: 'Active Feed'
-      })));
-    } else if (stagedVideos.length === 0 && (!storedVideos || storedVideos.length === 0)) {
-      setFeeds([]);
+    if (stagedVideos.length === 0) {
+      setFeeds(mapStoredVideosToFeeds(storedVideos));
     }
   }, [storedVideos]);
 
@@ -90,11 +87,12 @@ export default function VideoIngestion({
     const newFeeds = valid.map((file, idx) => {
       const sizeMB = (file.size / (1024 * 1024)).toFixed(0) + ' MB';
       return {
-        id: `staged-${Date.now()}-${idx}`,
-        title: `Camera 0${feeds.length + idx + 1} · ${file.name.replace(/\.[^/.]+$/, '')}`,
+        id: `staged-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+        title: `Camera ${feeds.length + idx + 1} · ${file.name.replace(/\.[^/.]+$/, '')}`,
         size: sizeMB,
         thumb: camThumb1,
         status: 'Staged for Upload',
+        isStored: false,
         file: file
       };
     });
@@ -104,9 +102,33 @@ export default function VideoIngestion({
     showToast?.(`${valid.length} video feed(s) added successfully.`, 'success');
   };
 
-  const removeFeed = (id) => {
-    setFeeds(prev => prev.filter(f => f.id !== id));
-    setStagedVideos(prev => prev.filter((_, idx) => `staged-${idx}` !== id));
+  const removeFeed = async (feedToRemove) => {
+    // 1. If it's a staged video not yet uploaded to server:
+    if (!feedToRemove.isStored) {
+      setFeeds(prev => prev.filter(f => f.id !== feedToRemove.id));
+      setStagedVideos(prev => prev.filter(file => file !== feedToRemove.file));
+      showToast?.('Staged video feed removed.', 'info');
+      return;
+    }
+
+    // 2. If it's an active/stored feed on the server:
+    try {
+      // Optimistically remove from feeds list
+      setFeeds(prev => prev.filter(f => f.id !== feedToRemove.id));
+      const identifier = feedToRemove.filename || feedToRemove.cameraId || feedToRemove.id;
+      const res = await deleteVideoFile(identifier);
+      showToast?.(res.message || 'Camera feed removed.', 'success');
+
+      if (onDeleteStoredVideo) {
+        await onDeleteStoredVideo(identifier);
+      } else if (onUploadSuccess) {
+        await onUploadSuccess();
+      }
+    } catch (err) {
+      console.error('Failed to remove feed:', err);
+      showToast?.(err.message || 'Failed to remove camera feed.', 'error');
+      setFeeds(mapStoredVideosToFeeds(storedVideos));
+    }
   };
 
   const updateFeedTitle = (id, newTitle) => {
@@ -285,9 +307,14 @@ export default function VideoIngestion({
                   <span>{feed.status}</span>
                 </div>
                 <button 
-                  onClick={() => removeFeed(feed.id)}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeFeed(feed);
+                  }}
                   className="feed-remove-btn"
                   title="Remove feed"
+                  aria-label="Remove feed"
                 >
                   <X size={15} />
                 </button>
