@@ -1,97 +1,82 @@
 import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { config } from '../config/index.js';
 import {
   getHealth,
   getVideos,
   handleUpload,
   deleteVideo,
-  deleteTarget,
   runDetection,
+  getDetectionStatus,
   getCameras,
   getSightings,
   getIdentities,
   getCropImage,
   streamVideo,
-  seedDatabase,
   clearAllVideos,
+  getVideoThumbnail,
 } from '../controllers/api.controller.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const VIDEOS_DIR = config.videosDir;
 
-const UPLOADS_DIR = path.resolve(__dirname, '../../uploads');
-const VIDEOS_DIR = path.join(UPLOADS_DIR, 'videos');
-const TARGETS_DIR = path.join(UPLOADS_DIR, 'targets');
-
-// Configure Multer storage
+// Configure Multer storage to write directly to unified data/videos
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    if (file.fieldname === 'videos') {
-      cb(null, VIDEOS_DIR);
-    } else if (file.fieldname === 'target') {
-      cb(null, TARGETS_DIR);
-    } else {
-      cb(new Error(`Unexpected field: ${file.fieldname}`));
-    }
+    cb(null, VIDEOS_DIR);
   },
   filename: (req, file, cb) => {
     const timestamp = Date.now();
     const cleanBase = path.parse(file.originalname).name.replace(/[^a-zA-Z0-9_-]/g, '_');
     const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `${file.fieldname}-${cleanBase}-${timestamp}${ext}`);
+    cb(null, `${cleanBase}-${timestamp}${ext}`);
   },
 });
 
 const upload = multer({
   storage,
   limits: {
-    fileSize: 500 * 1024 * 1024, // 500 MB max per file
+    fileSize: 1024 * 1024 * 1024, // 1 GB max per file
   },
   fileFilter: (req, file, cb) => {
+    const allowedExts = ['.mp4', '.avi', '.mov', '.mkv', '.webm'];
     const ext = path.extname(file.originalname).toLowerCase();
-    if (file.fieldname === 'videos') {
-      const validVideoExts = ['.mp4', '.avi', '.mov', '.mkv', '.webm'];
-      if (validVideoExts.includes(ext)) {
-        return cb(null, true);
-      }
-      return cb(new Error(`Invalid video format for ${file.originalname}`));
+    if (allowedExts.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Unsupported video format: ${ext}. Allowed: ${allowedExts.join(', ')}`));
     }
-    if (file.fieldname === 'target') {
-      const validImageExts = ['.jpg', '.jpeg', '.png', '.webp'];
-      if (validImageExts.includes(ext)) {
-        return cb(null, true);
-      }
-      return cb(new Error(`Invalid photo format for ${file.originalname}`));
-    }
-    cb(new Error(`Unknown upload field: ${file.fieldname}`));
   },
 });
 
-const uploadFields = upload.fields([
-  { name: 'videos', maxCount: 20 },
-  { name: 'target', maxCount: 1 },
-]);
-
 const router = Router();
 
-// Surveillance Ingestion & Uploads
+// Health check
 router.get('/health', getHealth);
-router.get('/videos', getVideos);
-router.post('/upload', uploadFields, handleUpload);
-router.delete('/videos', clearAllVideos);
-router.delete('/videos/:id', deleteVideo);
-router.delete('/target', deleteTarget);
-router.post('/detect', runDetection);
-router.post('/seed', seedDatabase);
 
-// CCTV Multi-Camera Tracker & Sequence Endpoints
+// Video management (Dynamic N feeds)
+router.get('/videos', getVideos);
+router.post(
+  '/upload',
+  upload.fields([{ name: 'videos', maxCount: 32 }]),
+  handleUpload
+);
+router.delete('/videos/all', clearAllVideos);
+router.delete('/videos', clearAllVideos);
+router.delete('/videos/:filename', deleteVideo);
+router.get('/videos/thumbnail/:filename', getVideoThumbnail);
+
+// AI Detection execution (Pure automatic discovery)
+router.get('/detection/status', getDetectionStatus);
+router.post('/detection/run', runDetection);
+router.post('/detect', runDetection);
+
+// Multi-camera & Surveillance tracking results
 router.get('/cameras', getCameras);
 router.get('/sightings', getSightings);
 router.get('/identities', getIdentities);
 router.get('/crops/:filename', getCropImage);
-router.get('/video/:camera_id', streamVideo);
+router.get('/videos/stream/:filename', streamVideo);
+router.get('/video/:cameraId', streamVideo);
 
 export default router;
-

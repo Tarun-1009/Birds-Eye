@@ -18,7 +18,10 @@ data/videos/*.avi
 data/videos/*.mov
 data/crops/*.jpg
 data/crops/*.png
+data/thumbnails/*
+!data/thumbnails/.gitkeep
 data/output/*
+data/metadata.json
 !data/videos/.gitkeep
 !data/crops/.gitkeep
 backend/uploads/videos/*

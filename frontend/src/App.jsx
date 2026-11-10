@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar from './components/Sidebar';
 import DashboardHeader from './components/DashboardHeader';
-import Overview from './components/Overview';
 import VideoIngestion from './components/VideoIngestion';
 import MultiCameraMatrix from './components/MultiCameraMatrix';
 import SequenceExplorer from './components/SequenceExplorer';
-import BirdsEyeCanvas from './components/BirdsEyeCanvas';
 import StoredVideosGallery from './components/StoredVideosGallery';
 import VideoPlayerModal from './components/VideoPlayerModal';
+import DetectionProgressModal from './components/DetectionProgressModal';
 import Toast from './components/Toast';
 import {
   checkHealth,
@@ -16,27 +15,26 @@ import {
   fetchIdentities,
   fetchVideosData,
   deleteVideoFile,
-  deleteTargetFile,
-  seedDatabase,
   runDetectionApi,
+  fetchDetectionStatus,
   clearAllVideosApi,
 } from './services/api';
-import { RefreshCw, ShieldCheck, Play, Trash2, Cpu } from 'lucide-react';
+import { Cpu } from 'lucide-react';
 
 export default function App() {
-  // Navigation tabs: 'overview' | 'ingestion' | 'vault' | 'studio' | 'birdseye' | 'activity'
+  // Navigation tabs: 'ingestion' | 'studio' | 'vault'
   const [activeTab, setActiveTab] = useState('ingestion');
   const [isOnline, setIsOnline] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isSeeding, setIsSeeding] = useState(false);
   const [isDetecting, setIsDetecting] = useState(false);
+  const [isProgressModalOpen, setIsProgressModalOpen] = useState(false);
+  const [detectionStatus, setDetectionStatus] = useState({});
 
   // Core Surveillance Data
   const [cameras, setCameras] = useState([]);
   const [sightings, setSightings] = useState([]);
   const [identities, setIdentities] = useState([]);
   const [storedVideos, setStoredVideos] = useState([]);
-  const [target, setTarget] = useState(null);
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
@@ -129,17 +127,43 @@ export default function App() {
 
   const handleRunDetectionPipeline = async () => {
     setIsDetecting(true);
+    setIsProgressModalOpen(true);
+    setDetectionStatus({ isRunning: true, percent: 5, stage: 'Initializing AI Models (YOLO11 + OSNet)...' });
+
     try {
-      showToast('Running AI multi-angle detection and Re-ID pipeline on feeds...', 'info');
-      const res = await runDetectionApi({ sampleStep: 10, conf: 0.25 });
-      showToast(res.message || `AI tracking pipeline complete: ${res.identitiesCount || 0} unique targets, ${res.sightingsCount || 0} frames indexed!`, 'success');
-      await loadCoreData();
-      await loadSightings();
+      await runDetectionApi({ sampleStep: 15, conf: 0.25 });
+
+      // Poll real-time progress every 400ms
+      const pollTimer = setInterval(async () => {
+        try {
+          const status = await fetchDetectionStatus();
+          setDetectionStatus(status);
+
+          if (!status.isRunning && status.percent >= 100) {
+            clearInterval(pollTimer);
+            setIsDetecting(false);
+            await loadCoreData();
+            await loadSightings();
+          } else if (status.error) {
+            clearInterval(pollTimer);
+            setIsDetecting(false);
+            showToast(status.error, 'error');
+          }
+        } catch (pollErr) {
+          console.warn('Progress poll issue:', pollErr);
+        }
+      }, 400);
     } catch (err) {
-      showToast(err.message || 'Detection failed', 'error');
-    } finally {
       setIsDetecting(false);
+      setIsProgressModalOpen(false);
+      showToast(err.message || 'Detection failed to launch', 'error');
     }
+  };
+
+  const handleProgressComplete = () => {
+    setIsProgressModalOpen(false);
+    setActiveTab('studio');
+    showToast('AI multi-angle tracking complete! Targets indexed.', 'success');
   };
 
   const handleClearAllFeeds = async () => {
@@ -151,20 +175,6 @@ export default function App() {
       await loadSightings();
     } catch (err) {
       showToast(err.message || 'Failed to clear feeds.', 'error');
-    }
-  };
-
-  const handleQuickSeed = async () => {
-    setIsSeeding(true);
-    try {
-      const res = await seedDatabase();
-      showToast(res.message || 'Dataset reloaded: 4 cameras, blue van, and target sequences synced.', 'success');
-      await loadCoreData();
-      await loadSightings();
-    } catch (err) {
-      showToast(err.message || 'Failed to seed dataset.', 'error');
-    } finally {
-      setIsSeeding(false);
     }
   };
 
@@ -180,17 +190,6 @@ export default function App() {
     }
   };
 
-  const handleDeleteTarget = async () => {
-    if (!window.confirm('Remove active target reference image?')) return;
-    try {
-      const res = await deleteTargetFile();
-      showToast(res.message || 'Target removed.', 'success');
-      loadCoreData();
-    } catch (err) {
-      showToast(err.message || 'Failed to remove target.', 'error');
-    }
-  };
-
   return (
     <div className="app-shell-container">
       {/* 1. LEFT SIDEBAR */}
@@ -200,7 +199,7 @@ export default function App() {
         isOnline={isOnline}
       />
 
-      {/* 2. MAIN DASHBOARD CONTENT AREA WITH CUSTOM BACKGROUND IMAGE */}
+      {/* 2. MAIN DASHBOARD CONTENT AREA */}
       <main className="dashboard-main">
         {/* TOP HEADER */}
         <DashboardHeader 
@@ -212,21 +211,11 @@ export default function App() {
 
         {/* PAGE CONTENT CONTAINER */}
         <div className="page-content-scroll">
-          {/* TAB 1: OVERVIEW (Full Modern AI Surveillance Dashboard) */}
-          {activeTab === 'overview' && (
-            <Overview
-              cameras={cameras}
-              sightings={sightings}
-              storedVideos={storedVideos}
-              onNavigateTab={setActiveTab}
-              onSeekCamera={handleSeekCamera}
-            />
-          )}
-
-          {/* TAB 2: VIDEO INGESTION */}
+          {/* TAB 1: UPLOAD FEEDS */}
           {activeTab === 'ingestion' && (
             <VideoIngestion 
               onContinueToStudio={() => setActiveTab('studio')}
+              onRunDetection={handleRunDetectionPipeline}
               storedVideos={storedVideos}
               onUploadSuccess={() => {
                 loadCoreData();
@@ -240,14 +229,14 @@ export default function App() {
             />
           )}
 
-          {/* TAB 3: DETECTION STUDIO (Live Quad Matrix + Sequence Explorer) */}
+          {/* TAB 2: TRACKING STUDIO */}
           {activeTab === 'studio' && (
             <div className="page-container">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
                 <div>
-                  <h1 className="page-header-title">Detection Studio</h1>
+                  <h1 className="page-header-title">Tracking Studio</h1>
                   <p className="page-header-desc">
-                    Real-time multi-camera tracking &amp; cross-camera rotation-invariant Re-ID sequence.
+                    Live multi-camera tracking &amp; cross-camera rotation-invariant Re-ID sequence.
                   </p>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
@@ -258,19 +247,9 @@ export default function App() {
                     style={{ padding: '0.45rem 1rem', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                   >
                     <Cpu size={15} className={isDetecting ? 'spin' : ''} />
-                    <span>{isDetecting ? 'Running AI Tracking...' : 'Run AI Detection Pipeline'}</span>
+                    <span>{isDetecting ? 'Running AI Tracking...' : 'Run AI Detection'}</span>
                   </button>
 
-                  <button 
-                    onClick={handleQuickSeed} 
-                    disabled={isSeeding}
-                    className="light-chip-btn"
-                    style={{ padding: '0.45rem 0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}
-                    title="Reload mock demo verification dataset"
-                  >
-                    <RefreshCw size={14} className={isSeeding ? 'spin' : ''} />
-                    <span>{isSeeding ? 'Syncing...' : 'Reload Demo Data'}</span>
-                  </button>
                   <span className="ready-status-pill-blue" style={{ padding: '0.35rem 0.8rem', fontSize: '0.78rem' }}>
                     <span className="operational-dot-blue"></span>
                     <span>Re-ID: Rotation-Invariant</span>
@@ -279,7 +258,7 @@ export default function App() {
               </div>
 
               <div className="detection-studio-grid">
-                {/* Left 2x2 CCTV Live Player Quad */}
+                {/* Left Live Camera Grid */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <MultiCameraMatrix
                     cameras={cameras}
@@ -288,7 +267,7 @@ export default function App() {
                   />
                 </div>
 
-                {/* Right Frame-by-Frame Sequence Explorer */}
+                {/* Right Frame-by-Frame Sequence Explorer & Objects List */}
                 <SequenceExplorer
                   sightings={sightings}
                   identities={identities}
@@ -306,7 +285,7 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB 4: VIDEO VAULT */}
+          {/* TAB 3: VIDEO VAULT */}
           {activeTab === 'vault' && (
             <div className="page-container">
               <div style={{ marginBottom: '1.25rem' }}>
@@ -317,102 +296,13 @@ export default function App() {
               </div>
               <StoredVideosGallery
                 videos={storedVideos}
-                target={target}
                 onRefresh={loadCoreData}
                 onPlayVideo={(v) => setPlayingVideo(v)}
                 onDeleteVideo={handleDeleteVideo}
-                onDeleteTarget={handleDeleteTarget}
                 onLaunchDetection={() => setActiveTab('studio')}
                 onClearAll={handleClearAllFeeds}
                 isRefreshing={isRefreshing}
               />
-            </div>
-          )}
-
-          {/* TAB 5: BIRD'S-EYE VIEW */}
-          {activeTab === 'birdseye' && (
-            <div className="page-container">
-              <div style={{ marginBottom: '1.25rem' }}>
-                <h1 className="page-header-title">Bird's-Eye View</h1>
-                <p className="page-header-desc">
-                  Top-down spatial sensor grid, multi-camera field-of-view cones &amp; cross-sector tracking.
-                </p>
-              </div>
-              <div className="section-box-card">
-                <BirdsEyeCanvas
-                  nodes={cameras.map((c, i) => ({
-                    id: c.camera_id,
-                    name: c.name,
-                    x: i === 0 ? 30 : i === 1 ? 70 : i === 2 ? 25 : 75,
-                    y: i === 0 ? 30 : i === 1 ? 35 : i === 2 ? 75 : 80,
-                    status: 'online',
-                  }))}
-                  targets={sightings.slice(0, 6).map((s, idx) => ({
-                    id: s.global_id || `TRK-${idx}`,
-                    label: s.identity_label || `Target ${idx + 1}`,
-                    type: s.entity_type || 'person',
-                    x: 20 + idx * 14,
-                    y: 25 + idx * 12,
-                    color: s.dominant_color || '#1769FF',
-                  }))}
-                  selectedZone="ALL"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* TAB 6: ACTIVITY */}
-          {activeTab === 'activity' && (
-            <div className="page-container">
-              <div style={{ marginBottom: '1.25rem' }}>
-                <h1 className="page-header-title">System Activity &amp; Accuracy</h1>
-                <p className="page-header-desc">
-                  Empirical benchmarks and telemetry logs across multi-camera test suites.
-                </p>
-              </div>
-
-              <div className="section-box-card">
-                <div className="section-box-header">
-                  <ShieldCheck size={18} color="#1769FF" />
-                  <span>Accuracy Benchmark Results (Evaluated on 171 Real Surveillance Crops)</span>
-                </div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', marginTop: '0.75rem' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid #E1E8F5', textAlign: 'left', color: '#64748B' }}>
-                      <th style={{ padding: '0.6rem 0.75rem' }}>Metric Test</th>
-                      <th style={{ padding: '0.6rem 0.75rem' }}>Result</th>
-                      <th style={{ padding: '0.6rem 0.75rem' }}>Benchmark Target</th>
-                      <th style={{ padding: '0.6rem 0.75rem' }}>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '0.6rem 0.75rem', fontWeight: 600 }}>Intra-Person Consistency</td>
-                      <td style={{ padding: '0.6rem 0.75rem' }}>0.8490 avg similarity</td>
-                      <td style={{ padding: '0.6rem 0.75rem', color: '#64748B' }}>&gt; 0.65</td>
-                      <td style={{ padding: '0.6rem 0.75rem', color: '#16a34a', fontWeight: 600 }}>Passed (100%)</td>
-                    </tr>
-                    <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '0.6rem 0.75rem', fontWeight: 600 }}>Inter-Person Separation Margin</td>
-                      <td style={{ padding: '0.6rem 0.75rem' }}>+0.1427 separation</td>
-                      <td style={{ padding: '0.6rem 0.75rem', color: '#64748B' }}>&gt; 0.05</td>
-                      <td style={{ padding: '0.6rem 0.75rem', color: '#16a34a', fontWeight: 600 }}>Passed (100%)</td>
-                    </tr>
-                    <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '0.6rem 0.75rem', fontWeight: 600 }}>180° Rotation Invariance (Front vs Back)</td>
-                      <td style={{ padding: '0.6rem 0.75rem' }}>0.8030 similarity</td>
-                      <td style={{ padding: '0.6rem 0.75rem', color: '#64748B' }}>&gt; 0.60</td>
-                      <td style={{ padding: '0.6rem 0.75rem', color: '#16a34a', fontWeight: 600 }}>Passed (100%)</td>
-                    </tr>
-                    <tr>
-                      <td style={{ padding: '0.6rem 0.75rem', fontWeight: 600 }}>Keypoint Orientation Accuracy</td>
-                      <td style={{ padding: '0.6rem 0.75rem' }}>100% matched</td>
-                      <td style={{ padding: '0.6rem 0.75rem', color: '#64748B' }}>&gt; 70%</td>
-                      <td style={{ padding: '0.6rem 0.75rem', color: '#16a34a', fontWeight: 600 }}>Passed (100%)</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
             </div>
           )}
         </div>
@@ -425,6 +315,14 @@ export default function App() {
           onClose={() => setPlayingVideo(null)}
         />
       )}
+
+      {/* Modern AI Detection Real-Time Progress Modal */}
+      <DetectionProgressModal
+        isOpen={isProgressModalOpen}
+        status={detectionStatus}
+        onComplete={handleProgressComplete}
+        onClose={() => setIsProgressModalOpen(false)}
+      />
 
       {/* Toast Notification Stack */}
       <Toast toasts={toasts} onDismiss={dismissToast} />

@@ -89,6 +89,17 @@ export const runDetectionApi = async (payload = {}) => {
   return data;
 };
 
+// Fetch real-time AI detection progress
+export const fetchDetectionStatus = async () => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/detection/status`);
+    if (!res.ok) throw new Error('Status fetch failed');
+    return await res.json();
+  } catch (err) {
+    return { isRunning: false, percent: 0, stage: 'Idle', error: err.message };
+  }
+};
+
 // Cameras Registry
 export const fetchCameras = async () => {
   try {
@@ -138,6 +149,13 @@ export const getCropImageUrl = (cropPath) => {
   if (!cropPath) return '';
   const filename = cropPath.split(/[/\\]/).pop();
   return `${API_BASE_URL}/crops/${filename}`;
+};
+
+// Video Real-Time Thumbnail URL
+export const getVideoThumbnailUrl = (filename) => {
+  if (!filename) return '';
+  const clean = filename.split(/[/\\]/).pop();
+  return `${API_BASE_URL}/videos/thumbnail/${clean}`;
 };
 
 // Video Stream Seeking URL

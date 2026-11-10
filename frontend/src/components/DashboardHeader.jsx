@@ -7,13 +7,10 @@ export default function DashboardHeader({
 }) {
   const getTabLabel = (id) => {
     switch (id) {
-      case 'overview': return 'Overview';
-      case 'ingestion': return 'Video Ingestion';
+      case 'ingestion': return 'Upload Feeds';
+      case 'studio': return 'Tracking Studio';
       case 'vault': return 'Video Vault';
-      case 'studio': return 'Detection Studio';
-      case 'birdseye': return "Bird's-Eye View";
-      case 'activity': return 'Activity';
-      default: return 'Overview';
+      default: return 'Upload Feeds';
     }
   };
 

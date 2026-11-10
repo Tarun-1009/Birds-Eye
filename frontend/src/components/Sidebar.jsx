@@ -14,12 +14,9 @@ export default function Sidebar({ activeTab, setActiveTab, isOnline = true }) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   const navItems = [
-    { id: 'overview', label: 'Overview', icon: Home },
-    { id: 'ingestion', label: 'Video Ingestion', icon: Video },
+    { id: 'ingestion', label: 'Upload Feeds', icon: Video },
+    { id: 'studio', label: 'Tracking Studio', icon: Crosshair },
     { id: 'vault', label: 'Video Vault', icon: Database },
-    { id: 'studio', label: 'Detection Studio', icon: Crosshair },
-    { id: 'birdseye', label: "Bird's-Eye View", icon: MapPin },
-    { id: 'activity', label: 'Activity', icon: BarChart2 },
   ];
 
   const handleNavClick = (id) => {

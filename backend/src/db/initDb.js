@@ -58,7 +58,7 @@ export function initializeDatabase(customDbPath) {
       frame_index INTEGER,
       timestamp TEXT,
       confidence REAL NOT NULL,
-      orientation TEXT NOT NULL CHECK(orientation IN ('FRONT', 'BACK', 'LEFT', 'RIGHT', 'N/A')),
+      orientation TEXT NOT NULL CHECK(orientation IN ('FRONT', 'BACK', 'LEFT', 'RIGHT', 'SIDE', 'N/A')),
       bbox_x REAL NOT NULL,
       bbox_y REAL NOT NULL,
       bbox_w REAL NOT NULL,
