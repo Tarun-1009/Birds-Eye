@@ -19,12 +19,12 @@ MODELS_DIR = ENGINE_DIR / "models"
 for directory in [DATA_DIR, VIDEOS_DIR, CROPS_DIR, OUTPUT_DIR, MODELS_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
 
-# YOLO Model Configurations
-MODEL_NAME = "yolo11n.pt"
+# YOLO Model Configurations: Upgraded to YOLO11m (Medium) for high accuracy on running persons & vehicles
+MODEL_NAME = "yolo11m.pt"
 MODEL_PATH = MODELS_DIR / MODEL_NAME
-CONFIDENCE_THRESHOLD = 0.40
+CONFIDENCE_THRESHOLD = 0.28
 IOU_THRESHOLD = 0.45
-DEFAULT_SAMPLE_STEP = 15
+DEFAULT_SAMPLE_STEP = 10
 
 # Supported recording video extensions
 SUPPORTED_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v"}

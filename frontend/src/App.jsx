@@ -138,7 +138,7 @@ export default function App() {
     setDetectionStatus({ isRunning: true, percent: 5, stage: 'Initializing AI Models (YOLO11 + OSNet)...' });
 
     try {
-      await runDetectionApi({ sampleStep: 15, conf: 0.40 });
+      await runDetectionApi({ sampleStep: 10, conf: 0.28 });
 
       // Poll real-time progress every 400ms
       const pollTimer = setInterval(async () => {

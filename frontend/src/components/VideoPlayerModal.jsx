@@ -120,11 +120,6 @@ export default function VideoPlayerModal({ video, onClose }) {
               }}
             />
             <span>{video.identityName || video.globalId || 'Target'}</span>
-            {video.orientation && video.orientation !== 'N/A' && (
-              <span style={{ opacity: 0.9, borderLeft: '1px solid rgba(255,255,255,0.4)', paddingLeft: '5px' }}>
-                {video.orientation}
-              </span>
-            )}
             {video.confidence && (
               <span style={{ opacity: 0.85, fontSize: '0.64rem' }}>
                 {Math.round(video.confidence * 100)}%

@@ -7,13 +7,21 @@ import {
   Eye,
   ArrowUpRight,
   User,
+  Car,
+  Bike,
   Layers,
   CheckCircle2,
   Scan,
-  Compass,
   Sparkles
 } from 'lucide-react';
 import { getCropImageUrl } from '../services/api';
+
+const renderEntityIcon = (type, size = 15) => {
+  const norm = (type || '').toLowerCase();
+  if (norm.includes('car')) return <Car size={size} color="#0891b2" />;
+  if (norm.includes('motorcycle') || norm.includes('bike') || norm.includes('bicycle')) return <Bike size={size} color="#7c3aed" />;
+  return <User size={size} color="#2563eb" />;
+};
 
 export default function SequenceExplorer({
   sightings = [],
@@ -213,7 +221,7 @@ export default function SequenceExplorer({
         </div>
 
         <p style={{ fontSize: '0.74rem', color: '#64748b', margin: 0, lineHeight: 1.35 }}>
-          Rotation-invariant gallery: Front, Back, and Side rotations are recognized as the <b>same object</b>. Click an object to see its progressive sequence.
+          Click any target below to view their tracking sequence across camera feeds.
         </p>
 
         {/* Objects Cards */}
@@ -229,7 +237,6 @@ export default function SequenceExplorer({
           ) : (
             identities.map((ident) => {
               const isSelected = selectedIdentityId === ident.global_id;
-              const angles = parseOrientations(ident);
               const thumbUrl = getCropImageUrl(ident.initial_crop_path || ident.reference_image_url);
 
               return (
@@ -273,7 +280,7 @@ export default function SequenceExplorer({
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />
                     ) : (
-                      <User size={18} color="#94a3b8" />
+                      renderEntityIcon(ident.entity_type, 20)
                     )}
                     {isSelected && (
                       <div style={{
@@ -305,37 +312,27 @@ export default function SequenceExplorer({
                       </span>
                     </div>
 
-                    {/* Rotated Orientation Badges (Proof of Rotation Invariance) */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '3px', flexWrap: 'wrap' }}>
-                      {angles.map((ang, aIdx) => {
-                        const angNorm = ang.toUpperCase().trim();
-                        let bg = '#dbeafe';
-                        let textCol = '#1e40af';
-                        if (angNorm === 'BACK') {
-                          bg = '#dcfce7';
-                          textCol = '#166534';
-                        } else if (angNorm === 'LEFT' || angNorm === 'RIGHT' || angNorm === 'SIDE') {
-                          bg = '#fef3c7';
-                          textCol = '#92400e';
-                        }
-                        return (
-                          <span
-                            key={aIdx}
-                            style={{
-                              fontSize: '0.62rem',
-                              fontWeight: 700,
-                              padding: '1px 5px',
-                              borderRadius: '4px',
-                              backgroundColor: bg,
-                              color: textCol,
-                              letterSpacing: '0.3px'
-                            }}
-                            title={`Observed from ${angNorm} angle - unified under this object`}
-                          >
-                            {angNorm}
-                          </span>
-                        );
-                      })}
+                    {/* Entity Subtype Badge */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{
+                        fontSize: '0.66rem',
+                        fontWeight: 600,
+                        padding: '1px 6px',
+                        borderRadius: '4px',
+                        backgroundColor: ident.entity_type === 'person' ? '#eff6ff' : '#ecfeff',
+                        color: ident.entity_type === 'person' ? '#1d4ed8' : '#0e7490',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}>
+                        {renderEntityIcon(ident.entity_type, 11)}
+                        <span>{ident.entity_type ? ident.entity_type.toUpperCase() : 'TARGET'}</span>
+                      </span>
+                      {ident.dominant_color && ident.dominant_color !== 'Silver' && (
+                        <span style={{ fontSize: '0.66rem', color: '#64748b', fontWeight: 500 }}>
+                          • {ident.dominant_color}
+                        </span>
+                      )}
                     </div>
 
                     {/* Cameras visited */}
@@ -467,7 +464,7 @@ export default function SequenceExplorer({
                   }}
                   title={`Jump to ${step.camera_name} (t=${formatTimestamp(step.timestamp_sec)})`}
                 >
-                  {step.camera_name || step.camera_id} ({step.orientation})
+                  {step.camera_name || step.camera_id}
                 </button>
                 {sIdx < cameraJourney.length - 1 && (
                   <span style={{ color: '#94a3b8', fontSize: '0.72rem' }}>➔</span>
@@ -477,20 +474,11 @@ export default function SequenceExplorer({
           </div>
         )}
 
-        {/* Controls Bar: Angle Filter + Deduplication Toggle */}
+        {/* Controls Bar: Sequence Count + Deduplication Toggle */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <div className="light-filter-strip" style={{ flex: 1, minWidth: '220px' }}>
-            {orientationFilters.map((f) => (
-              <button
-                key={f.id}
-                type="button"
-                className={`light-filter-btn ${activeOrientation === f.id ? 'active' : ''}`}
-                onClick={() => onOrientationChange(f.id)}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
+          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569' }}>
+            Trajectory Keyframes ({displaySightings.length})
+          </span>
 
           <button
             type="button"
@@ -624,17 +612,21 @@ export default function SequenceExplorer({
                       )}
                     </div>
 
-                    {/* Bottom Row: Orientation Badge + Action Buttons */}
+                    {/* Bottom Row: Entity Badge + Action Buttons */}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '2px', gap: '0.4rem' }}>
                       <span style={{
                         fontSize: '0.64rem',
-                        fontWeight: 700,
+                        fontWeight: 600,
                         padding: '1px 6px',
                         borderRadius: '4px',
-                        backgroundColor: oriBg,
-                        color: oriCol
+                        backgroundColor: '#f1f5f9',
+                        color: '#475569',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
                       }}>
-                        Angle: {ori}
+                        {renderEntityIcon(s.entity_type, 11)}
+                        <span>{s.entity_type ? s.entity_type.toUpperCase() : 'TARGET'}</span>
                       </span>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>

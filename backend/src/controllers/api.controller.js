@@ -420,8 +420,8 @@ export async function runDetection(req, res) {
     const args = [
       pipelineScript,
       '--clear',
-      '--sample-step', String(req.body?.sampleStep || 15),
-      '--conf', String(req.body?.conf || 0.40),
+      '--sample-step', String(req.body?.sampleStep || 10),
+      '--conf', String(req.body?.conf || 0.28),
     ];
 
     console.log(`[AI Pipeline Agent] Executing: ${pythonPath} ${args.join(' ')}`);

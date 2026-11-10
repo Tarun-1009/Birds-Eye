@@ -39,6 +39,52 @@ from ai_engine.reid_gallery import ReIDGallery
 DB_PATH = DATA_DIR / "cctv_tracker.db"
 
 
+def extract_vehicle_color(img_bgr: np.ndarray) -> str:
+    """
+    Extracts the dominant vehicle color (White, Black, Silver, Red, Blue, Yellow, Green, etc.)
+    using HSV color space analysis on the vehicle body crop.
+    """
+    if img_bgr is None or img_bgr.size == 0:
+        return "Silver"
+    h, w, _ = img_bgr.shape
+    if h < 12 or w < 12:
+        return "Silver"
+    # Sample center region to minimize road, windshield, and shadow interference
+    center = img_bgr[int(h * 0.25):int(h * 0.75), int(w * 0.2):int(w * 0.8)]
+    if center.size == 0:
+        center = img_bgr
+
+    hsv = cv2.cvtColor(center, cv2.COLOR_BGR2HSV)
+    h_chan = hsv[:, :, 0]
+    s_chan = hsv[:, :, 1]
+    v_chan = hsv[:, :, 2]
+
+    mean_s = float(np.mean(s_chan))
+    mean_v = float(np.mean(v_chan))
+
+    # 1. Low saturation -> Neutral/Grayscale
+    if mean_s < 42:
+        if mean_v < 65:
+            return "Black"
+        elif mean_v > 175:
+            return "White"
+        else:
+            return "Silver"
+
+    # 2. Chromatic colors based on Hue (0-180 in OpenCV)
+    mean_h = float(np.mean(h_chan))
+    if mean_h < 12 or mean_h > 165:
+        return "Red"
+    elif 12 <= mean_h < 35:
+        return "Yellow"
+    elif 35 <= mean_h < 85:
+        return "Green"
+    elif 85 <= mean_h < 135:
+        return "Blue"
+    else:
+        return "Dark"
+
+
 def run_pipeline(
     camera_ids=None,
     sample_step=10,
@@ -132,6 +178,7 @@ def run_pipeline(
 
     CROPS_DIR.mkdir(parents=True, exist_ok=True)
     total_detections_inserted = 0
+    vehicle_color_map = {}
 
     total_cams = len(cameras)
     for cam_idx, cam in enumerate(cameras):
@@ -170,6 +217,8 @@ def run_pipeline(
         cam_sightings_count = 0
         # Target tracking memory per camera to eliminate duplicate 0.4s consecutive frames
         cam_history = {}
+        # ByteTrack local track to Global ID mapping for camera consistency
+        cam_local_to_global = {}
 
         while cap.isOpened():
             ret, frame = cap.read()
@@ -283,7 +332,9 @@ def run_pipeline(
                     except Exception:
                         pass
 
-                # 1. Process Person Detections with Orientation-Aware Re-ID
+                # 1. Process Person Detections with Orientation-Aware Re-ID & Multi-Person Isolation
+                frame_assigned_ids = set()
+
                 for p in person_items:
                     x1, y1, x2, y2 = p["x1"], p["y1"], p["x2"], p["y2"]
                     w, h = p["w"], p["h"]
@@ -316,15 +367,36 @@ def run_pipeline(
                     # Extract OSNet appearance embeddings
                     body_vec, torso_vec = reid_extractor.extract_pair(crop_img, torso_img)
 
-                    # Multi-orientation Re-ID matching (unifies 180° rotations)
-                    global_id, reid_sim, is_new = gallery.match_or_register(
-                        body_vector=body_vec,
-                        torso_vector=torso_vec,
-                        orientation=orientation,
-                        camera_id=cam_id,
-                        timestamp=timestamp_str,
-                        carried_items=p["carried_items"]
-                    )
+                    # Multi-person isolation:
+                    # If this ByteTrack local track was already identified, reuse its Global ID
+                    if local_id in cam_local_to_global:
+                        global_id = cam_local_to_global[local_id]
+                        target_rec = gallery.gallery.get(global_id)
+                        if target_rec:
+                            cand_slot = gallery.map_orientation_slot(orientation)
+                            if len(target_rec["orientations"][cand_slot]) < 10:
+                                target_rec["orientations"][cand_slot].append(body_vec)
+                            if len(target_rec["orientations"]["torso"]) < 10:
+                                target_rec["orientations"]["torso"].append(torso_vec)
+                    else:
+                        # Exclude IDs already assigned to other persons in this frame or other active tracks
+                        excluded = frame_assigned_ids.copy()
+                        for active_lid, active_gid in cam_local_to_global.items():
+                            if active_lid != local_id:
+                                excluded.add(active_gid)
+
+                        global_id, reid_sim, is_new = gallery.match_or_register(
+                            body_vector=body_vec,
+                            torso_vector=torso_vec,
+                            orientation=orientation,
+                            camera_id=cam_id,
+                            timestamp=timestamp_str,
+                            carried_items=p["carried_items"],
+                            excluded_ids=excluded
+                        )
+                        cam_local_to_global[local_id] = global_id
+
+                    frame_assigned_ids.add(global_id)
 
                     # Progressive Keyframe Filtering (avoids repetitive loop frames)
                     prev_entry = cam_history.get(global_id)
@@ -335,10 +407,10 @@ def run_pipeline(
                     elif orientation != prev_entry["last_ori"]:
                         # Angle changed (e.g. Front -> Back / Side)!
                         should_record = True
-                    elif (frame_sec - prev_entry["last_time"]) >= 2.0:
+                    elif (frame_sec - prev_entry["last_time"]) >= 1.5:
                         dx = abs(x1 - prev_entry["last_pos"][0])
                         dy = abs(y1 - prev_entry["last_pos"][1])
-                        if dx > 35 or dy > 35:
+                        if dx > 25 or dy > 25:
                             should_record = True
 
                     if should_record:
@@ -371,7 +443,7 @@ def run_pipeline(
                         cam_sightings_count += 1
                         total_detections_inserted += 1
 
-                # 2. Process Vehicles (Cars, Vans, Trucks, Buses, Motorcycles)
+                # 2. Process Vehicles (Cars, Bikes, Motorcycles, Bicycles, Trucks, Buses)
                 for v in vehicle_items:
                     x1, y1, x2, y2 = v["x1"], v["y1"], v["x2"], v["y2"]
                     w, h = v["w"], v["h"]
@@ -397,6 +469,9 @@ def run_pipeline(
                         crop_img = frame[y1:y2, x1:x2]
                         cv2.imwrite(str(crop_path), crop_img)
 
+                        v_color = extract_vehicle_color(crop_img)
+                        vehicle_color_map[v_gid] = v_color
+
                         cam_history[v_gid] = {
                             "last_time": frame_sec,
                             "last_ori": v_ori,
@@ -409,9 +484,9 @@ def run_pipeline(
                                 frame_index, timestamp, confidence, orientation,
                                 bbox_x, bbox_y, bbox_w, bbox_h, bev_x, bev_y,
                                 crop_path, carried_items
-                            ) VALUES (?, ?, ?, 'vehicle', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
-                            cam_id, frame_sec, v_gid, local_id, frame_idx, timestamp_str,
+                            cam_id, frame_sec, v_gid, c_name, local_id, frame_idx, timestamp_str,
                             round(conf, 3), v_ori, x1, y1, w, h,
                             round(x1 + w / 2, 2), round(y1 + h, 2), crop_filename, None
                         ))
@@ -518,7 +593,7 @@ def run_pipeline(
     cursor.execute("""
         SELECT DISTINCT global_id, entity_type, camera_id, timestamp_sec, crop_path 
         FROM sightings 
-        WHERE entity_type IN ('vehicle', 'object')
+        WHERE entity_type != 'person'
         GROUP BY global_id
     """)
     non_persons = cursor.fetchall()
@@ -527,7 +602,8 @@ def run_pipeline(
         np_type = np_row["entity_type"]
         parts = np_gid.split("_")
         kind = parts[1] if len(parts) > 2 else parts[0]
-        label = f"{kind.capitalize()} #{parts[-1]}"
+        color = vehicle_color_map.get(np_gid, "Silver")
+        label = f"{color} {kind.capitalize()} #{parts[-1]}"
 
         cursor.execute("""
             INSERT OR REPLACE INTO global_identities (
@@ -536,7 +612,7 @@ def run_pipeline(
             ) VALUES (?, ?, ?, ?, ?, ?, ?, (SELECT COUNT(*) FROM sightings WHERE global_id = ?))
         """, (
             np_gid, np_type, label, np_row["camera_id"], np_row["timestamp_sec"],
-            '#0891b2' if np_type == 'vehicle' else '#d97706',
+            color,
             np_row["crop_path"], np_gid
         ))
 

@@ -17,11 +17,11 @@ class ReIDGallery:
     """
     In-memory Re-ID gallery categorized by multi-orientation feature slots.
     """
-    SIMILARITY_THRESHOLD = 0.60
+    SIMILARITY_THRESHOLD = 0.68
     OPPOSITE_TORSO_WEIGHT = 0.75
     OPPOSITE_BODY_WEIGHT = 0.25
 
-    def __init__(self, similarity_threshold: float = 0.60):
+    def __init__(self, similarity_threshold: float = 0.68):
         self.similarity_threshold = similarity_threshold
         # In-memory dictionary gallery
         self.gallery: Dict[str, Dict[str, Any]] = {}
@@ -57,12 +57,20 @@ class ReIDGallery:
 
     def _compute_slot_similarity(self, query_vec: np.ndarray, stored_vectors: List[np.ndarray]) -> float:
         """
-        Computes maximum cosine similarity against all stored vectors in a slot.
+        Computes robust top-k consensus cosine similarity against stored vectors in a slot.
+        Prevents a single outlier vector from swallowing different individuals.
         """
         if not stored_vectors or query_vec is None:
             return 0.0
-        sims = [self.cosine_similarity(query_vec, sv) for sv in stored_vectors]
-        return float(max(sims)) if sims else 0.0
+        sims = sorted([self.cosine_similarity(query_vec, sv) for sv in stored_vectors], reverse=True)
+        if not sims:
+            return 0.0
+        if len(sims) == 1:
+            return float(sims[0])
+        # Top-3 consensus: 60% best match + 40% top-3 average
+        top_k = sims[:min(3, len(sims))]
+        top_avg = float(np.mean(top_k))
+        return float(0.6 * sims[0] + 0.4 * top_avg)
 
     def match_or_register(
         self,
@@ -72,7 +80,8 @@ class ReIDGallery:
         camera_id: str = "CAM-01",
         timestamp: Optional[str] = None,
         carried_items: Optional[List[str]] = None,
-        crop_image_url: Optional[str] = None
+        crop_image_url: Optional[str] = None,
+        excluded_ids: Optional[Set[str]] = None
     ) -> Tuple[str, float, bool]:
         """
         Matches a person across cameras:
@@ -92,6 +101,9 @@ class ReIDGallery:
         best_sim = -1.0
 
         for gid, record in self.gallery.items():
+            if excluded_ids and gid in excluded_ids:
+                continue
+
             slots = record["orientations"]
             id_scores = []
 
@@ -152,10 +164,10 @@ class ReIDGallery:
             if carried_items:
                 target_record["carried_items"].update(carried_items)
 
-            # Update feature slots (keep up to 15 representative vectors per slot)
-            if len(target_record["orientations"][cand_slot]) < 15:
+            # Update feature slots (keep up to 10 representative vectors per slot)
+            if len(target_record["orientations"][cand_slot]) < 10:
                 target_record["orientations"][cand_slot].append(body_vector)
-            if len(target_record["orientations"]["torso"]) < 15:
+            if len(target_record["orientations"]["torso"]) < 10:
                 target_record["orientations"]["torso"].append(torso_vector)
 
             return best_global_id, round(best_sim, 3), False

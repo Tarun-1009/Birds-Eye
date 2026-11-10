@@ -10,6 +10,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 ai_engine/models/*.pt
+!ai_engine/models/.gitkeep
 *.pt
 
 # Video & Crop Artifacts (Large Binaries)

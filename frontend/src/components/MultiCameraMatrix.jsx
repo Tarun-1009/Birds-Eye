@@ -214,11 +214,6 @@ export default function MultiCameraMatrix({
                 }}
               />
               <span>{b.label}</span>
-              {b.orientation && b.orientation !== 'N/A' && (
-                <span style={{ opacity: 0.9, borderLeft: '1px solid rgba(255,255,255,0.4)', paddingLeft: '4px' }}>
-                  {b.orientation}
-                </span>
-              )}
               {b.confidence && (
                 <span style={{ opacity: 0.85, fontSize: '0.60rem' }}>
                   {Math.round(b.confidence * 100)}%
