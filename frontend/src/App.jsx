@@ -78,7 +78,6 @@ export default function App() {
 
       if (vidsData) {
         setStoredVideos(vidsData.videos || []);
-        setTarget(vidsData.target || null);
       }
     } catch (err) {
       console.error('Failed to load surveillance data:', err);
@@ -168,10 +167,11 @@ export default function App() {
     }
   };
 
-  const handleProgressComplete = () => {
+  const handleProgressComplete = useCallback(() => {
     setIsProgressModalOpen(false);
+    setDetectionStatus({});
     setActiveTab('studio');
-  };
+  }, []);
 
   const handleClearAllFeeds = async () => {
     if (!window.confirm('Are you sure you want to delete all camera feeds, crops, and tracking records? This resets the platform completely.')) return;
@@ -332,7 +332,10 @@ export default function App() {
         isOpen={isProgressModalOpen}
         status={detectionStatus}
         onComplete={handleProgressComplete}
-        onClose={() => setIsProgressModalOpen(false)}
+        onClose={() => {
+          setIsProgressModalOpen(false);
+          setDetectionStatus({});
+        }}
       />
 
       {/* Toast Notification Stack */}

@@ -37,15 +37,15 @@ export default function DetectionProgressModal({
     }
   }, [percent, displayPercent]);
 
-  // Auto-dismiss and transition smoothly after reaching 100%
+  // Auto-dismiss and transition smoothly after reaching 100% ONLY when modal is actively open
   useEffect(() => {
-    if (isDone) {
-      const timer = setTimeout(() => {
-        onComplete?.();
-      }, 1400);
-      return () => clearTimeout(timer);
-    }
-  }, [isDone, onComplete]);
+    if (!isOpen || !isDone) return;
+
+    const timer = setTimeout(() => {
+      onComplete?.();
+    }, 1400);
+    return () => clearTimeout(timer);
+  }, [isOpen, isDone, onComplete]);
 
   if (!isOpen) return null;
 
