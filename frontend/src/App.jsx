@@ -120,6 +120,7 @@ export default function App() {
   }, [loadSightings]);
 
   const [activeSighting, setActiveSighting] = useState(null);
+  const [playbackStatus, setPlaybackStatus] = useState({ camId: null, currentTime: 0 });
 
   const handleSeekCamera = (cameraId, timestampSec, sighting = null) => {
     setSeekTarget({
@@ -138,7 +139,7 @@ export default function App() {
     setDetectionStatus({ isRunning: true, percent: 5, stage: 'Initializing AI Models (YOLO11 + OSNet)...' });
 
     try {
-      await runDetectionApi({ sampleStep: 10, conf: 0.28 });
+      await runDetectionApi({ sampleStep: 2, conf: 0.32 });
 
       // Poll real-time progress every 400ms
       const pollTimer = setInterval(async () => {
@@ -273,6 +274,7 @@ export default function App() {
                     activeSighting={activeSighting}
                     allSightings={sightings}
                     onNavigateToIngestion={() => setActiveTab('ingestion')}
+                    onPlaybackProgress={(camId, currentTime) => setPlaybackStatus({ camId, currentTime })}
                   />
                 </div>
 
@@ -291,6 +293,7 @@ export default function App() {
                   onSeekCamera={handleSeekCamera}
                   onPlayVideo={(v) => setPlayingVideo(v)}
                   onActiveSightingChange={(s) => setActiveSighting(s)}
+                  playbackStatus={playbackStatus}
                 />
               </div>
             </div>

@@ -27,6 +27,12 @@ from ai_engine.config import (
     CROPS_DIR,
     DATA_DIR,
     CONFIDENCE_THRESHOLD,
+    PERSON_CONFIDENCE,
+    VEHICLE_CONFIDENCE,
+    INFERENCE_IMG_SIZE,
+    DEFAULT_SAMPLE_STEP,
+    MOTION_SAMPLE_INTERVAL_SEC,
+    MIN_TRACK_SIGHTINGS,
     TARGET_CLASSES,
     CARRIED_ITEM_CLASSES,
     VEHICLE_CLASSES,
@@ -39,56 +45,25 @@ from ai_engine.reid_gallery import ReIDGallery
 DB_PATH = DATA_DIR / "cctv_tracker.db"
 
 
-def extract_vehicle_color(img_bgr: np.ndarray) -> str:
+def compute_iou(boxA, boxB):
     """
-    Extracts the dominant vehicle color (White, Black, Silver, Red, Blue, Yellow, Green, etc.)
-    using HSV color space analysis on the vehicle body crop.
+    Computes Intersection-over-Union (IoU) between two bounding boxes [x1, y1, x2, y2].
+    Used for spatial anchor tracking of parked and moving vehicles.
     """
-    if img_bgr is None or img_bgr.size == 0:
-        return "Silver"
-    h, w, _ = img_bgr.shape
-    if h < 12 or w < 12:
-        return "Silver"
-    # Sample center region to minimize road, windshield, and shadow interference
-    center = img_bgr[int(h * 0.25):int(h * 0.75), int(w * 0.2):int(w * 0.8)]
-    if center.size == 0:
-        center = img_bgr
-
-    hsv = cv2.cvtColor(center, cv2.COLOR_BGR2HSV)
-    h_chan = hsv[:, :, 0]
-    s_chan = hsv[:, :, 1]
-    v_chan = hsv[:, :, 2]
-
-    mean_s = float(np.mean(s_chan))
-    mean_v = float(np.mean(v_chan))
-
-    # 1. Low saturation -> Neutral/Grayscale
-    if mean_s < 42:
-        if mean_v < 65:
-            return "Black"
-        elif mean_v > 175:
-            return "White"
-        else:
-            return "Silver"
-
-    # 2. Chromatic colors based on Hue (0-180 in OpenCV)
-    mean_h = float(np.mean(h_chan))
-    if mean_h < 12 or mean_h > 165:
-        return "Red"
-    elif 12 <= mean_h < 35:
-        return "Yellow"
-    elif 35 <= mean_h < 85:
-        return "Green"
-    elif 85 <= mean_h < 135:
-        return "Blue"
-    else:
-        return "Dark"
+    xA = max(boxA[0], boxB[0])
+    yA = max(boxA[1], boxB[1])
+    xB = min(boxA[2], boxB[2])
+    yB = min(boxA[3], boxB[3])
+    interArea = max(0, xB - xA) * max(0, yB - yA)
+    boxAArea = max(1, (boxA[2] - boxA[0]) * (boxA[3] - boxA[1]))
+    boxBArea = max(1, (boxB[2] - boxB[0]) * (boxB[3] - boxB[1]))
+    return interArea / float(boxAArea + boxBArea - interArea)
 
 
 def run_pipeline(
     camera_ids=None,
-    sample_step=10,
-    conf_thresh=0.25,
+    sample_step=2,
+    conf_thresh=0.32,
     similarity_thresh=0.68,
     clear_existing=False
 ):
@@ -178,7 +153,7 @@ def run_pipeline(
 
     CROPS_DIR.mkdir(parents=True, exist_ok=True)
     total_detections_inserted = 0
-    vehicle_color_map = {}
+    veh_counters = {}
 
     total_cams = len(cameras)
     for cam_idx, cam in enumerate(cameras):
@@ -215,10 +190,13 @@ def run_pipeline(
 
         frame_idx = 0
         cam_sightings_count = 0
-        # Target tracking memory per camera to eliminate duplicate 0.4s consecutive frames
+        # Target tracking memory per camera to eliminate duplicate consecutive frames
         cam_history = {}
         # ByteTrack local track to Global ID mapping for camera consistency
         cam_local_to_global = {}
+        cam_veh_local_to_global = {}
+        # Spatial vehicle anchors to avoid duplicate vehicle identities when ByteTrack drops stationary/slow cars
+        cam_vehicle_anchors = []
 
         while cap.isOpened():
             ret, frame = cap.read()
@@ -243,12 +221,14 @@ def run_pipeline(
                 }
                 print(f"JSON_PROGRESS:{json.dumps(progress_data)}", flush=True)
 
-                # YOLO ByteTrack tracking
+                # YOLO ByteTrack tracking with high-resolution inference
+                tracker_base_conf = min(PERSON_CONFIDENCE, VEHICLE_CONFIDENCE, conf_thresh)
                 results = yolo_model.track(
                     frame,
                     persist=True,
                     tracker="bytetrack.yaml",
-                    conf=conf_thresh,
+                    conf=tracker_base_conf,
+                    imgsz=INFERENCE_IMG_SIZE,
                     verbose=False
                 )[0]
 
@@ -263,6 +243,18 @@ def run_pipeline(
                     conf = float(box.conf[0].item())
 
                     if cls_id not in TARGET_CLASSES:
+                        continue
+
+                    # Dual-tier confidence filtering:
+                    # - Reject persons below PERSON_CONFIDENCE (0.35)
+                    # - Strictly reject vehicles below VEHICLE_CONFIDENCE (0.50) to eliminate tents, gazebos, canopies
+                    if cls_id == 0:
+                        if conf < PERSON_CONFIDENCE:
+                            continue
+                    elif cls_id in VEHICLE_CLASSES:
+                        if conf < VEHICLE_CONFIDENCE:
+                            continue
+                    else:
                         continue
 
                     xyxy = box.xyxy[0].cpu().numpy().astype(int)
@@ -379,11 +371,9 @@ def run_pipeline(
                             if len(target_rec["orientations"]["torso"]) < 10:
                                 target_rec["orientations"]["torso"].append(torso_vec)
                     else:
-                        # Exclude IDs already assigned to other persons in this frame or other active tracks
+                        # Exclude IDs already assigned to OTHER persons in this exact frame (mutual exclusivity).
+                        # Do NOT exclude previous tracks from the camera, so person can be matched to their own gallery identity!
                         excluded = frame_assigned_ids.copy()
-                        for active_lid, active_gid in cam_local_to_global.items():
-                            if active_lid != local_id:
-                                excluded.add(active_gid)
 
                         global_id, reid_sim, is_new = gallery.match_or_register(
                             body_vector=body_vec,
@@ -398,7 +388,7 @@ def run_pipeline(
 
                     frame_assigned_ids.add(global_id)
 
-                    # Progressive Keyframe Filtering (avoids repetitive loop frames)
+                    # High-density motion recording for live continuous trajectory tracking
                     prev_entry = cam_history.get(global_id)
                     should_record = False
 
@@ -407,11 +397,14 @@ def run_pipeline(
                     elif orientation != prev_entry["last_ori"]:
                         # Angle changed (e.g. Front -> Back / Side)!
                         should_record = True
-                    elif (frame_sec - prev_entry["last_time"]) >= 1.5:
+                    elif (frame_sec - prev_entry["last_time"]) >= MOTION_SAMPLE_INTERVAL_SEC:
                         dx = abs(x1 - prev_entry["last_pos"][0])
                         dy = abs(y1 - prev_entry["last_pos"][1])
-                        if dx > 25 or dy > 25:
+                        # Whenever a person is running or walking, record high-rate trajectory
+                        if dx > 8 or dy > 8:
                             should_record = True
+                    elif (frame_sec - prev_entry["last_time"]) >= 1.2:
+                        should_record = True
 
                     if should_record:
                         crop_filename = f"crop_{cam_id}_{global_id}_f{frame_idx:04d}_{orientation}.jpg"
@@ -444,33 +437,66 @@ def run_pipeline(
                         total_detections_inserted += 1
 
                 # 2. Process Vehicles (Cars, Bikes, Motorcycles, Bicycles, Trucks, Buses)
+                # ByteTrack-First Multi-Vehicle Tracking: Each vehicle track gets its own unique identity
+                # Two cars in the same frame will NEVER merge into one!
                 for v in vehicle_items:
                     x1, y1, x2, y2 = v["x1"], v["y1"], v["x2"], v["y2"]
                     w, h = v["w"], v["h"]
                     local_id = v["local_id"]
                     conf = v["conf"]
                     c_name = v["class_name"]
-                    v_gid = f"veh_{c_name}_{local_id:03d}"
+
+                    # Filter out tents/gazebos with abnormal sizes (> 65% frame area)
+                    if (w * h) > (width * height * 0.65):
+                        continue
+
+                    if local_id in cam_veh_local_to_global:
+                        v_gid = cam_veh_local_to_global[local_id]
+                    else:
+                        # Check if this new track matches a stationary parked vehicle in the exact same spot
+                        best_stationary_gid = None
+                        for anchor in cam_vehicle_anchors:
+                            if anchor["class_name"] == c_name:
+                                iou = compute_iou([x1, y1, x2, y2], anchor["bbox"])
+                                if iou >= 0.70:
+                                    best_stationary_gid = anchor["v_gid"]
+                                    anchor["bbox"] = [x1, y1, x2, y2]
+                                    anchor["last_seen_sec"] = frame_sec
+                                    break
+
+                        if best_stationary_gid:
+                            v_gid = best_stationary_gid
+                        else:
+                            veh_counters[c_name] = veh_counters.get(c_name, 0) + 1
+                            v_gid = f"veh_{c_name}_{veh_counters[c_name]:03d}"
+                            cam_vehicle_anchors.append({
+                                "v_gid": v_gid,
+                                "class_name": c_name,
+                                "bbox": [x1, y1, x2, y2],
+                                "last_seen_sec": frame_sec
+                            })
+
+                        cam_veh_local_to_global[local_id] = v_gid
+
                     v_ori = "SIDE" if w > h * 1.3 else ("FRONT" if h > w else "SIDE")
 
                     v_prev = cam_history.get(v_gid)
                     should_record_veh = False
                     if v_prev is None:
                         should_record_veh = True
-                    elif (frame_sec - v_prev["last_time"]) >= 2.0:
+                    elif (frame_sec - v_prev["last_time"]) >= MOTION_SAMPLE_INTERVAL_SEC:
                         dx = abs(x1 - v_prev["last_pos"][0])
                         dy = abs(y1 - v_prev["last_pos"][1])
-                        if dx > 40 or dy > 40:
+                        if dx > 8 or dy > 8:
                             should_record_veh = True
+                    elif (frame_sec - v_prev["last_time"]) >= 1.2:
+                        should_record_veh = True
 
                     if should_record_veh:
                         crop_filename = f"crop_{cam_id}_{v_gid}_f{frame_idx:04d}_{v_ori}.jpg"
                         crop_path = CROPS_DIR / crop_filename
                         crop_img = frame[y1:y2, x1:x2]
                         cv2.imwrite(str(crop_path), crop_img)
-
-                        v_color = extract_vehicle_color(crop_img)
-                        vehicle_color_map[v_gid] = v_color
 
                         cam_history[v_gid] = {
                             "last_time": frame_sec,
@@ -602,8 +628,7 @@ def run_pipeline(
         np_type = np_row["entity_type"]
         parts = np_gid.split("_")
         kind = parts[1] if len(parts) > 2 else parts[0]
-        color = vehicle_color_map.get(np_gid, "Silver")
-        label = f"{color} {kind.capitalize()} #{parts[-1]}"
+        label = f"{kind.capitalize()} #{parts[-1]}"
 
         cursor.execute("""
             INSERT OR REPLACE INTO global_identities (
@@ -612,12 +637,13 @@ def run_pipeline(
             ) VALUES (?, ?, ?, ?, ?, ?, ?, (SELECT COUNT(*) FROM sightings WHERE global_id = ?))
         """, (
             np_gid, np_type, label, np_row["camera_id"], np_row["timestamp_sec"],
-            color,
+            '#1769FF',
             np_row["crop_path"], np_gid
         ))
 
-    # Prune any empty identities
-    cursor.execute("DELETE FROM global_identities WHERE global_id NOT IN (SELECT DISTINCT global_id FROM sightings)")
+    # Prune transient 1-2 frame ghost flickers so only confirmed persistent targets remain
+    cursor.execute("DELETE FROM global_identities WHERE total_sightings < ?", (MIN_TRACK_SIGHTINGS,))
+    cursor.execute("DELETE FROM sightings WHERE global_id NOT IN (SELECT global_id FROM global_identities)")
     conn.commit()
 
     progress_data = {
@@ -656,8 +682,8 @@ def run_pipeline(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Birds-Eye Multi-Camera AI Tracking Pipeline")
-    parser.add_argument("--sample-step", "--sample_step", type=int, default=10, dest="sample_step", help="Evaluate every N frames (default: 10)")
-    parser.add_argument("--conf", "--conf_thresh", type=float, default=0.25, dest="conf", help="YOLO confidence threshold (default: 0.25)")
+    parser.add_argument("--sample-step", "--sample_step", type=int, default=2, dest="sample_step", help="Evaluate every N frames (default: 2)")
+    parser.add_argument("--conf", "--conf_thresh", type=float, default=0.32, dest="conf", help="YOLO confidence threshold (default: 0.32)")
     parser.add_argument("--clear", action="store_true", help="Clear existing sightings before running")
     parser.add_argument("--cameras", nargs="+", help="Specific camera IDs to run on")
     args = parser.parse_args()

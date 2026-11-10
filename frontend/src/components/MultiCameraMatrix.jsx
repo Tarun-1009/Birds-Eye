@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { Play, Pause, Volume2, VolumeX, Video, UploadCloud, ArrowRight, Scan, Crosshair } from 'lucide-react';
 import { getVideoStreamUrl } from '../services/api';
 
@@ -8,6 +8,7 @@ export default function MultiCameraMatrix({
   activeSighting,
   allSightings = [],
   onNavigateToIngestion,
+  onPlaybackProgress,
 }) {
   const videoRefs = useRef({});
   const [isPlaying, setIsPlaying] = useState({});
@@ -19,16 +20,25 @@ export default function MultiCameraMatrix({
   const [showBoundingBoxes, setShowBoundingBoxes] = useState(true);
 
   // Jump to exact second when a frame sighting is clicked / stepped
+  // Strictly pauses all other cameras so only ONE camera plays at a time
   useEffect(() => {
     if (!seekTarget || !seekTarget.camera_id) return;
 
     const camId = seekTarget.camera_id;
+
+    // Pause all other cameras
+    Object.entries(videoRefs.current).forEach(([otherCamId, otherVideo]) => {
+      if (otherCamId !== camId && otherVideo && !otherVideo.paused) {
+        otherVideo.pause();
+      }
+    });
+
     const video = videoRefs.current[camId];
 
     if (video) {
       video.currentTime = seekTarget.timestamp_sec;
       video.play().then(() => {
-        setIsPlaying((prev) => ({ ...prev, [camId]: true }));
+        setIsPlaying({ [camId]: true });
       }).catch(() => {
         /* Autoplay policy */
       });
@@ -45,8 +55,14 @@ export default function MultiCameraMatrix({
     if (!video) return;
 
     if (video.paused) {
+      // Pause all other cameras
+      Object.entries(videoRefs.current).forEach(([otherCamId, otherVideo]) => {
+        if (otherCamId !== camId && otherVideo && !otherVideo.paused) {
+          otherVideo.pause();
+        }
+      });
       video.play().then(() => {
-        setIsPlaying((prev) => ({ ...prev, [camId]: true }));
+        setIsPlaying({ [camId]: true });
       }).catch(console.error);
     } else {
       video.pause();
@@ -75,73 +91,175 @@ export default function MultiCameraMatrix({
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  // Render Dynamic Interpolated Bounding Box Overlay for a Camera Feed
+  // Pre-index sightings by camera_id and global_id, sorted by timestamp_sec
+  const sightingsByCamAndEntity = useMemo(() => {
+    const map = {};
+    if (!allSightings || allSightings.length === 0) return map;
+
+    allSightings.forEach((s) => {
+      if (!s.camera_id || !s.global_id || !s.bbox_w) return;
+      if (!map[s.camera_id]) map[s.camera_id] = {};
+      if (!map[s.camera_id][s.global_id]) map[s.camera_id][s.global_id] = [];
+      map[s.camera_id][s.global_id].push(s);
+    });
+
+    // Chronological sort
+    Object.keys(map).forEach((cId) => {
+      Object.keys(map[cId]).forEach((gId) => {
+        map[cId][gId].sort((a, b) => a.timestamp_sec - b.timestamp_sec);
+      });
+    });
+
+    return map;
+  }, [allSightings]);
+
+  // 60fps RequestAnimationFrame time-tracker for silky smooth live bounding box motion
+  useEffect(() => {
+    let animId;
+    const tick = () => {
+      let updated = false;
+      const newTimes = {};
+      let activePlaying = null;
+
+      Object.entries(videoRefs.current).forEach(([cId, vEl]) => {
+        if (vEl && !vEl.paused) {
+          newTimes[cId] = vEl.currentTime;
+          updated = true;
+          activePlaying = { cId, time: vEl.currentTime };
+        }
+      });
+
+      if (updated) {
+        setCurrentTimes((prev) => ({ ...prev, ...newTimes }));
+      }
+      if (activePlaying && onPlaybackProgress) {
+        onPlaybackProgress(activePlaying.cId, activePlaying.time);
+      }
+      animId = requestAnimationFrame(tick);
+    };
+    animId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(animId);
+  }, [onPlaybackProgress]);
+
+  // Render Live Interpolated Bounding Box Overlay for a Camera Feed
   const renderBoundingBoxes = (camId) => {
     if (!showBoundingBoxes) return null;
 
-    const boxesToRender = [];
     const vw = videoDimensions[camId]?.w || 1920;
     const vh = videoDimensions[camId]?.h || 1080;
     const curTime = currentTimes[camId] !== undefined ? currentTimes[camId] : (activeSighting?.timestamp_sec || 0);
 
-    // 1. Primary Active Sighting (Selected target from sequence)
-    if (activeSighting && activeSighting.camera_id === camId && activeSighting.bbox_w > 0) {
-      const diff = Math.abs(curTime - activeSighting.timestamp_sec);
-      // Option 2: 2.2s interpolation window with smooth fading
-      if (diff <= 2.2) {
-        let opacity = 1.0;
-        if (diff > 0.6) {
-          opacity = Math.max(0.2, 1.0 - (diff - 0.6) / 1.6);
+    const entitiesOnCam = sightingsByCamAndEntity[camId] || {};
+    const boxesToRender = [];
+
+    Object.entries(entitiesOnCam).forEach(([gId, track]) => {
+      if (!track || track.length === 0) return;
+
+      let prev = null;
+      let next = null;
+
+      for (let i = 0; i < track.length; i++) {
+        if (track[i].timestamp_sec <= curTime) {
+          prev = track[i];
         }
-
-        const leftPct = Math.max(0, Math.min(95, (activeSighting.bbox_x / vw) * 100));
-        const topPct = Math.max(0, Math.min(95, (activeSighting.bbox_y / vh) * 100));
-        const widthPct = Math.max(3, Math.min(100 - leftPct, (activeSighting.bbox_w / vw) * 100));
-        const heightPct = Math.max(3, Math.min(100 - topPct, (activeSighting.bbox_h / vh) * 100));
-
-        boxesToRender.push({
-          key: `active-${activeSighting.id || activeSighting.global_id}`,
-          leftPct,
-          topPct,
-          widthPct,
-          heightPct,
-          opacity,
-          isActive: true,
-          label: activeSighting.identity_name || activeSighting.global_id || 'Target',
-          orientation: activeSighting.orientation,
-          confidence: activeSighting.confidence,
-        });
+        if (track[i].timestamp_sec >= curTime) {
+          next = track[i];
+          break;
+        }
       }
-    }
 
-    // 2. Auxiliary sightings on this camera matching current playback second
-    if (allSightings && allSightings.length > 0) {
-      allSightings.forEach((s) => {
-        if (s.camera_id === camId && s.id !== activeSighting?.id && s.bbox_w > 0) {
-          const diff = Math.abs(curTime - s.timestamp_sec);
-          if (diff <= 1.4) {
-            const opacity = Math.max(0.15, 0.85 - diff / 1.4);
-            const leftPct = Math.max(0, Math.min(95, (s.bbox_x / vw) * 100));
-            const topPct = Math.max(0, Math.min(95, (s.bbox_y / vh) * 100));
-            const widthPct = Math.max(3, Math.min(100 - leftPct, (s.bbox_w / vw) * 100));
-            const heightPct = Math.max(3, Math.min(100 - topPct, (s.bbox_h / vh) * 100));
+      let interpX, interpY, interpW, interpH;
+      let opacity = 1.0;
+      let label = gId;
+      let confidence = 0.9;
+      const isActive = activeSighting && (
+        activeSighting.global_id === gId ||
+        activeSighting.id === prev?.id ||
+        activeSighting.id === next?.id
+      );
 
-            boxesToRender.push({
-              key: `aux-${s.id}`,
-              leftPct,
-              topPct,
-              widthPct,
-              heightPct,
-              opacity,
-              isActive: false,
-              label: s.identity_name || s.global_id || 'Target',
-              orientation: s.orientation,
-              confidence: s.confidence,
-            });
+      if (prev && next) {
+        const timeDelta = next.timestamp_sec - prev.timestamp_sec;
+        if (timeDelta <= 1.5) {
+          // Smooth continuous linear interpolation between consecutive points
+          const alpha = timeDelta > 0.001 ? (curTime - prev.timestamp_sec) / timeDelta : 0;
+          interpX = prev.bbox_x + alpha * (next.bbox_x - prev.bbox_x);
+          interpY = prev.bbox_y + alpha * (next.bbox_y - prev.bbox_y);
+          interpW = prev.bbox_w + alpha * (next.bbox_w - prev.bbox_w);
+          interpH = prev.bbox_h + alpha * (next.bbox_h - prev.bbox_h);
+          label = next.identity_name || next.label || prev.identity_name || prev.label || gId;
+          confidence = next.confidence || prev.confidence;
+        } else {
+          // Gap between distinct sighting clusters
+          const diffPrev = Math.abs(curTime - prev.timestamp_sec);
+          const diffNext = Math.abs(curTime - next.timestamp_sec);
+          if (diffPrev <= 0.6) {
+            interpX = prev.bbox_x;
+            interpY = prev.bbox_y;
+            interpW = prev.bbox_w;
+            interpH = prev.bbox_h;
+            opacity = Math.max(0.2, 1.0 - diffPrev / 0.6);
+            label = prev.identity_name || prev.label || gId;
+            confidence = prev.confidence;
+          } else if (diffNext <= 0.6) {
+            interpX = next.bbox_x;
+            interpY = next.bbox_y;
+            interpW = next.bbox_w;
+            interpH = next.bbox_h;
+            opacity = Math.max(0.2, 1.0 - diffNext / 0.6);
+            label = next.identity_name || next.label || gId;
+            confidence = next.confidence;
+          } else {
+            return;
           }
         }
+      } else if (prev) {
+        const diff = curTime - prev.timestamp_sec;
+        if (diff >= 0 && diff <= 0.6) {
+          interpX = prev.bbox_x;
+          interpY = prev.bbox_y;
+          interpW = prev.bbox_w;
+          interpH = prev.bbox_h;
+          opacity = Math.max(0.2, 1.0 - diff / 0.6);
+          label = prev.identity_name || prev.label || gId;
+          confidence = prev.confidence;
+        } else {
+          return;
+        }
+      } else if (next) {
+        const diff = next.timestamp_sec - curTime;
+        if (diff >= 0 && diff <= 0.6) {
+          interpX = next.bbox_x;
+          interpY = next.bbox_y;
+          interpW = next.bbox_w;
+          interpH = next.bbox_h;
+          opacity = Math.max(0.2, 1.0 - diff / 0.6);
+          label = next.identity_name || next.label || gId;
+          confidence = next.confidence;
+        } else {
+          return;
+        }
+      } else {
+        return;
+      }
+
+      const leftPct = Math.max(0, Math.min(95, (interpX / vw) * 100));
+      const topPct = Math.max(0, Math.min(95, (interpY / vh) * 100));
+      const widthPct = Math.max(3, Math.min(100 - leftPct, (interpW / vw) * 100));
+      const heightPct = Math.max(3, Math.min(100 - topPct, (interpH / vh) * 100));
+
+      boxesToRender.push({
+        key: `${camId}-${gId}`,
+        leftPct,
+        topPct,
+        widthPct,
+        heightPct,
+        opacity,
+        isActive,
+        label,
+        confidence,
       });
-    }
+    });
 
     if (boxesToRender.length === 0) return null;
 

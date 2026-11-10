@@ -37,6 +37,7 @@ export default function SequenceExplorer({
   onSeekCamera,
   onPlayVideo,
   onActiveSightingChange,
+  playbackStatus,
 }) {
   const [isPlayingSequence, setIsPlayingSequence] = useState(false);
   // Selected object/identity ID ('ALL' or specific global_id like 'person_001')
@@ -64,33 +65,59 @@ export default function SequenceExplorer({
     return identities.find((id) => id.global_id === selectedIdentityId) || identities[0] || null;
   }, [identities, selectedIdentityId]);
 
-  // Progressive Non-Repetitive Sightings (eliminates feeling of repeating same video)
+  // Segmented Multi-Camera Journey:
+  // Groups sightings into clean chronological camera passage segments
+  // (Prevents overlapping recordings from interleaving into back-and-forth ping-pong)
   const displaySightings = useMemo(() => {
     let list = objectSightings;
     if (activeOrientation && activeOrientation !== 'ALL') {
       list = list.filter((s) => (s.orientation || '').toUpperCase() === activeOrientation.toUpperCase());
     }
-    if (!onlyKeyframes) return list;
+    if (!list || list.length === 0) return [];
 
-    // Filter out redundant consecutive frames (same camera, same angle, within 1.8s)
-    const filtered = [];
-    let lastCam = null;
-    let lastOri = null;
-    let lastTime = -999;
+    // Group sightings by camera
+    const byCam = {};
+    list.forEach((s) => {
+      if (!byCam[s.camera_id]) byCam[s.camera_id] = [];
+      byCam[s.camera_id].push(s);
+    });
 
-    for (const s of list) {
-      const isNewCam = s.camera_id !== lastCam;
-      const isNewOri = s.orientation !== lastOri;
-      const timeDiff = Math.abs(s.timestamp_sec - lastTime);
+    // Determine the entry time and duration for each camera
+    const camPassages = Object.entries(byCam).map(([cId, camList]) => {
+      camList.sort((a, b) => a.timestamp_sec - b.timestamp_sec);
+      return {
+        cameraId: cId,
+        firstTime: camList[0].timestamp_sec,
+        lastTime: camList[camList.length - 1].timestamp_sec,
+        sightings: camList,
+      };
+    });
 
-      if (isNewCam || isNewOri || timeDiff >= 1.8) {
-        filtered.push(s);
-        lastCam = s.camera_id;
-        lastOri = s.orientation;
-        lastTime = s.timestamp_sec;
-      }
-    }
-    return filtered;
+    // Sort passages by the target's first entrance into that camera
+    camPassages.sort((a, b) => a.firstTime - b.firstTime);
+
+    // Build flat list of sightings passage-by-passage
+    const passageList = [];
+    camPassages.forEach((passage) => {
+      let lastOri = null;
+      let lastTime = -999;
+
+      passage.sightings.forEach((s) => {
+        if (!onlyKeyframes) {
+          passageList.push(s);
+        } else {
+          const isNewOri = s.orientation !== lastOri;
+          const timeDiff = Math.abs(s.timestamp_sec - lastTime);
+          if (isNewOri || timeDiff >= 1.5) {
+            passageList.push(s);
+            lastOri = s.orientation;
+            lastTime = s.timestamp_sec;
+          }
+        }
+      });
+    });
+
+    return passageList;
   }, [objectSightings, activeOrientation, onlyKeyframes]);
 
   // Synchronize active sighting with parent for bounding box rendering
@@ -103,50 +130,83 @@ export default function SequenceExplorer({
     }
   }, [displaySightings, activeSightingIndex, onActiveSightingChange]);
 
-  // Camera journey path breadcrumb across the facility
+  // Camera journey path breadcrumbs across the facility
   const cameraJourney = useMemo(() => {
     const journey = [];
     let lastCam = null;
+
     displaySightings.forEach((s, idx) => {
       if (s.camera_id !== lastCam) {
+        // Find last sighting on this camera segment
+        const sightingsOnCam = displaySightings.filter((item) => item.camera_id === s.camera_id);
+        const lastOnCam = sightingsOnCam[sightingsOnCam.length - 1];
+
         journey.push({
           camera_id: s.camera_id,
           camera_name: s.camera_name || s.camera_id,
-          timestamp_sec: s.timestamp_sec,
+          startTime: s.timestamp_sec,
+          endTime: lastOnCam ? lastOnCam.timestamp_sec : s.timestamp_sec,
           orientation: s.orientation,
           sightingIndex: idx,
         });
         lastCam = s.camera_id;
       }
     });
+
     return journey;
   }, [displaySightings]);
 
-  // Auto-step timeline player through this object's frames
-  // STOPS when reaching the end so it doesn't loop endlessly and feel like repeating!
+  // Live continuous sequence synchronization:
+  // Plays smoothly through each camera passage in succession without interleaving or repeating.
+  // When target finishes on one camera, pauses it and hands over to the next camera!
   useEffect(() => {
-    if (!isPlayingSequence || displaySightings.length === 0) return;
+    if (!isPlayingSequence || !playbackStatus || !playbackStatus.camId || displaySightings.length === 0) return;
 
-    const interval = setInterval(() => {
-      onSelectSightingIndex((prev) => {
-        if (prev + 1 >= displaySightings.length) {
-          setIsPlayingSequence(false); // Stop at end of sequence!
-          return prev;
-        }
-        const next = prev + 1;
-        const nextSighting = displaySightings[next];
-        if (nextSighting && onSeekCamera) {
-          onSeekCamera(nextSighting.camera_id, nextSighting.timestamp_sec, nextSighting);
-        }
-        return next;
-      });
-    }, 2200);
+    const { camId, currentTime } = playbackStatus;
+    if (currentTime === undefined || currentTime === null) return;
 
-    return () => clearInterval(interval);
-  }, [isPlayingSequence, displaySightings, onSelectSightingIndex, onSeekCamera]);
+    // 1. Highlight the sighting in the current camera passage matching playback time
+    let bestIdx = -1;
+    let minDiff = 999;
+
+    for (let i = 0; i < displaySightings.length; i++) {
+      const s = displaySightings[i];
+      if (s.camera_id === camId) {
+        const diff = Math.abs(currentTime - s.timestamp_sec);
+        if (diff < minDiff && diff <= 1.5) {
+          minDiff = diff;
+          bestIdx = i;
+        }
+      }
+    }
+
+    if (bestIdx !== -1 && bestIdx !== activeSightingIndex) {
+      onSelectSightingIndex(bestIdx);
+    }
+
+    // 2. Camera journey handover: check if current camera passage has finished
+    const currentJourneyIdx = cameraJourney.findIndex((j) => j.camera_id === camId);
+    if (currentJourneyIdx !== -1) {
+      const currentLeg = cameraJourney[currentJourneyIdx];
+      // If current video playback has reached or passed the end of the target's passage
+      if (currentTime >= currentLeg.endTime + 0.4) {
+        if (currentJourneyIdx < cameraJourney.length - 1) {
+          const nextLeg = cameraJourney[currentJourneyIdx + 1];
+          const nextSighting = displaySightings[nextLeg.sightingIndex];
+          if (nextSighting && onSeekCamera) {
+            onSeekCamera(nextLeg.camera_id, nextLeg.startTime, nextSighting);
+          }
+        } else {
+          // Reached the end of the final camera in the journey
+          setIsPlayingSequence(false);
+        }
+      }
+    }
+  }, [isPlayingSequence, playbackStatus, displaySightings, cameraJourney, activeSightingIndex, onSelectSightingIndex, onSeekCamera]);
 
   const handleStepPrev = () => {
     if (displaySightings.length === 0) return;
+    setIsPlayingSequence(false);
     const nextIdx = activeSightingIndex > 0 ? activeSightingIndex - 1 : displaySightings.length - 1;
     onSelectSightingIndex(nextIdx);
     const s = displaySightings[nextIdx];
@@ -157,6 +217,7 @@ export default function SequenceExplorer({
 
   const handleStepNext = () => {
     if (displaySightings.length === 0) return;
+    setIsPlayingSequence(false);
     const nextIdx = (activeSightingIndex + 1) % displaySightings.length;
     onSelectSightingIndex(nextIdx);
     const s = displaySightings[nextIdx];
@@ -328,11 +389,6 @@ export default function SequenceExplorer({
                         {renderEntityIcon(ident.entity_type, 11)}
                         <span>{ident.entity_type ? ident.entity_type.toUpperCase() : 'TARGET'}</span>
                       </span>
-                      {ident.dominant_color && ident.dominant_color !== 'Silver' && (
-                        <span style={{ fontSize: '0.66rem', color: '#64748b', fontWeight: 500 }}>
-                          • {ident.dominant_color}
-                        </span>
-                      )}
                     </div>
 
                     {/* Cameras visited */}
@@ -398,7 +454,7 @@ export default function SequenceExplorer({
                     nextIdx = 0;
                     onSelectSightingIndex(0);
                   }
-                  const s = displaySightings[nextIdx];
+                  const s = displaySightings[nextIdx] || displaySightings[0];
                   if (s && onSeekCamera) {
                     onSeekCamera(s.camera_id, s.timestamp_sec, s);
                   }
