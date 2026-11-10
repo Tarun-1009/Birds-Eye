@@ -17,11 +17,11 @@ class ReIDGallery:
     """
     In-memory Re-ID gallery categorized by multi-orientation feature slots.
     """
-    SIMILARITY_THRESHOLD = 0.73
-    OPPOSITE_TORSO_WEIGHT = 0.70
-    OPPOSITE_BODY_WEIGHT = 0.30
+    SIMILARITY_THRESHOLD = 0.60
+    OPPOSITE_TORSO_WEIGHT = 0.75
+    OPPOSITE_BODY_WEIGHT = 0.25
 
-    def __init__(self, similarity_threshold: float = 0.73):
+    def __init__(self, similarity_threshold: float = 0.60):
         self.similarity_threshold = similarity_threshold
         # In-memory dictionary gallery
         self.gallery: Dict[str, Dict[str, Any]] = {}

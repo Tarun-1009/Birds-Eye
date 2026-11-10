@@ -325,7 +325,7 @@ export default function VideoIngestion({
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569' }}>
-              Categories Tracked Across Feeds:
+              Surveillance Targets Tracked Across Feeds:
             </span>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem' }}>
               <div style={{ padding: '0.6rem', borderRadius: '6px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', fontSize: '0.78rem' }}>
@@ -333,16 +333,16 @@ export default function VideoIngestion({
                 <p style={{ margin: '2px 0 0 0', color: '#64748b', fontSize: '0.72rem' }}>180° rotation-invariant (front vs back)</p>
               </div>
               <div style={{ padding: '0.6rem', borderRadius: '6px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', fontSize: '0.78rem' }}>
-                <span style={{ fontWeight: 600, color: '#0f172a' }}>🚐 Vehicles</span>
+                <span style={{ fontWeight: 600, color: '#0f172a' }}>🚗 Cars &amp; Vans</span>
                 <p style={{ margin: '2px 0 0 0', color: '#64748b', fontSize: '0.72rem' }}>Cars, vans, SUVs, trucks</p>
               </div>
               <div style={{ padding: '0.6rem', borderRadius: '6px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', fontSize: '0.78rem' }}>
-                <span style={{ fontWeight: 600, color: '#0f172a' }}>❄️ Coolers &amp; Fridges</span>
-                <p style={{ margin: '2px 0 0 0', color: '#64748b', fontSize: '0.72rem' }}>Appliance &amp; cooler object tracking</p>
+                <span style={{ fontWeight: 600, color: '#0f172a' }}>🏍️ Bikes &amp; Motorcycles</span>
+                <p style={{ margin: '2px 0 0 0', color: '#64748b', fontSize: '0.72rem' }}>Motorcycles &amp; motor scooters</p>
               </div>
               <div style={{ padding: '0.6rem', borderRadius: '6px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', fontSize: '0.78rem' }}>
-                <span style={{ fontWeight: 600, color: '#0f172a' }}>🧳 Luggage &amp; Bags</span>
-                <p style={{ margin: '2px 0 0 0', color: '#64748b', fontSize: '0.72rem' }}>Backpacks, suitcases, handbags</p>
+                <span style={{ fontWeight: 600, color: '#0f172a' }}>🚲 Bicycles &amp; Cycles</span>
+                <p style={{ margin: '2px 0 0 0', color: '#64748b', fontSize: '0.72rem' }}>Bicycles &amp; pedal cycles</p>
               </div>
             </div>
           </div>

@@ -1,5 +1,7 @@
 """
 Birds-Eye AI Engine Configuration
+Surveillance Core: Persons & Moving Vehicles (Cars, Bikes, Motorcycles, Bicycles, Trucks, Buses)
+No clutter objects (suitcases, coolers, backpacks, furniture are completely excluded)
 """
 from pathlib import Path
 import os
@@ -17,36 +19,30 @@ MODELS_DIR = ENGINE_DIR / "models"
 for directory in [DATA_DIR, VIDEOS_DIR, CROPS_DIR, OUTPUT_DIR, MODELS_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
 
-# YOLO Model Configurations (YOLO11n Nano default)
+# YOLO Model Configurations
 MODEL_NAME = "yolo11n.pt"
 MODEL_PATH = MODELS_DIR / MODEL_NAME
-CONFIDENCE_THRESHOLD = 0.35
+CONFIDENCE_THRESHOLD = 0.40
 IOU_THRESHOLD = 0.45
-DEFAULT_SAMPLE_STEP = 20  # Analyze every 20 frames by default
+DEFAULT_SAMPLE_STEP = 15
 
 # Supported recording video extensions
 SUPPORTED_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v"}
 
-# COCO Classes relevant for surveillance
+# COCO Classes STRICTLY for surveillance:
+# Only Persons and Moving Vehicles. Zero suitcases, coolers, or accessories.
 TARGET_CLASSES = {
     0: "person",
     1: "bicycle",
     2: "car",
     3: "motorcycle",
     5: "bus",
-    7: "truck",          # Trucks & delivery vans
-    24: "backpack",
-    26: "handbag",
-    28: "suitcase",      # Suitcases & portable coolers / storage cases
-    72: "cooler"         # COCO 72 refrigerator / cooler / ice chests
+    7: "truck",
 }
 
+# Vehicles tracked as moving mobile entities
 VEHICLE_CLASSES = {1, 2, 3, 5, 7}
-OBJECT_CLASSES = {24, 26, 28, 72}
 
-# Carried item classes to associate with tracked persons
-CARRIED_ITEM_CLASSES = {
-    24: "backpack",
-    26: "handbag",
-    28: "suitcase"
-}
+# Zero background clutter
+CARRIED_ITEM_CLASSES = set()
+OBJECT_CLASSES = set()

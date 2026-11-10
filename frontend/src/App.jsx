@@ -100,9 +100,11 @@ export default function App() {
       setActiveSightingIndex(0);
 
       if (data && data.length > 0) {
+        setActiveSighting(data[0]);
         setSeekTarget({
           camera_id: data[0].camera_id,
           timestamp_sec: data[0].timestamp_sec,
+          sighting: data[0],
         });
       }
     } catch (err) {
@@ -118,11 +120,17 @@ export default function App() {
     loadSightings();
   }, [loadSightings]);
 
-  const handleSeekCamera = (cameraId, timestampSec) => {
+  const [activeSighting, setActiveSighting] = useState(null);
+
+  const handleSeekCamera = (cameraId, timestampSec, sighting = null) => {
     setSeekTarget({
       camera_id: cameraId,
       timestamp_sec: timestampSec,
+      sighting: sighting,
     });
+    if (sighting) {
+      setActiveSighting(sighting);
+    }
   };
 
   const handleRunDetectionPipeline = async () => {
@@ -131,7 +139,7 @@ export default function App() {
     setDetectionStatus({ isRunning: true, percent: 5, stage: 'Initializing AI Models (YOLO11 + OSNet)...' });
 
     try {
-      await runDetectionApi({ sampleStep: 15, conf: 0.25 });
+      await runDetectionApi({ sampleStep: 15, conf: 0.40 });
 
       // Poll real-time progress every 400ms
       const pollTimer = setInterval(async () => {
@@ -163,7 +171,6 @@ export default function App() {
   const handleProgressComplete = () => {
     setIsProgressModalOpen(false);
     setActiveTab('studio');
-    showToast('AI multi-angle tracking complete! Targets indexed.', 'success');
   };
 
   const handleClearAllFeeds = async () => {
@@ -263,6 +270,8 @@ export default function App() {
                   <MultiCameraMatrix
                     cameras={cameras}
                     seekTarget={seekTarget}
+                    activeSighting={activeSighting}
+                    allSightings={sightings}
                     onNavigateToIngestion={() => setActiveTab('ingestion')}
                   />
                 </div>
@@ -280,6 +289,8 @@ export default function App() {
                   activeSightingIndex={activeSightingIndex}
                   onSelectSightingIndex={setActiveSightingIndex}
                   onSeekCamera={handleSeekCamera}
+                  onPlayVideo={(v) => setPlayingVideo(v)}
+                  onActiveSightingChange={(s) => setActiveSighting(s)}
                 />
               </div>
             </div>

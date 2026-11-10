@@ -27,6 +27,8 @@ export default function SequenceExplorer({
   activeSightingIndex,
   onSelectSightingIndex,
   onSeekCamera,
+  onPlayVideo,
+  onActiveSightingChange,
 }) {
   const [isPlayingSequence, setIsPlayingSequence] = useState(false);
   // Selected object/identity ID ('ALL' or specific global_id like 'person_001')
@@ -83,6 +85,16 @@ export default function SequenceExplorer({
     return filtered;
   }, [objectSightings, activeOrientation, onlyKeyframes]);
 
+  // Synchronize active sighting with parent for bounding box rendering
+  useEffect(() => {
+    if (displaySightings && displaySightings.length > 0) {
+      const active = displaySightings[activeSightingIndex] || displaySightings[0];
+      if (active && onActiveSightingChange) {
+        onActiveSightingChange(active);
+      }
+    }
+  }, [displaySightings, activeSightingIndex, onActiveSightingChange]);
+
   // Camera journey path breadcrumb across the facility
   const cameraJourney = useMemo(() => {
     const journey = [];
@@ -116,7 +128,7 @@ export default function SequenceExplorer({
         const next = prev + 1;
         const nextSighting = displaySightings[next];
         if (nextSighting && onSeekCamera) {
-          onSeekCamera(nextSighting.camera_id, nextSighting.timestamp_sec);
+          onSeekCamera(nextSighting.camera_id, nextSighting.timestamp_sec, nextSighting);
         }
         return next;
       });
@@ -131,7 +143,7 @@ export default function SequenceExplorer({
     onSelectSightingIndex(nextIdx);
     const s = displaySightings[nextIdx];
     if (s && onSeekCamera) {
-      onSeekCamera(s.camera_id, s.timestamp_sec);
+      onSeekCamera(s.camera_id, s.timestamp_sec, s);
     }
   };
 
@@ -141,7 +153,7 @@ export default function SequenceExplorer({
     onSelectSightingIndex(nextIdx);
     const s = displaySightings[nextIdx];
     if (s && onSeekCamera) {
-      onSeekCamera(s.camera_id, s.timestamp_sec);
+      onSeekCamera(s.camera_id, s.timestamp_sec, s);
     }
   };
 
@@ -382,8 +394,23 @@ export default function SequenceExplorer({
             <button
               type="button"
               className={`light-chip-btn ${isPlayingSequence ? 'active' : ''}`}
-              onClick={() => setIsPlayingSequence(!isPlayingSequence)}
-              title={isPlayingSequence ? 'Pause Sequence' : 'Auto-Step Sequence (stops at end)'}
+              onClick={() => {
+                if (!isPlayingSequence) {
+                  let nextIdx = activeSightingIndex;
+                  if (activeSightingIndex >= displaySightings.length - 1) {
+                    nextIdx = 0;
+                    onSelectSightingIndex(0);
+                  }
+                  const s = displaySightings[nextIdx];
+                  if (s && onSeekCamera) {
+                    onSeekCamera(s.camera_id, s.timestamp_sec, s);
+                  }
+                  setIsPlayingSequence(true);
+                } else {
+                  setIsPlayingSequence(false);
+                }
+              }}
+              title={isPlayingSequence ? 'Pause Sequence' : 'Play Timeline Sequence across camera feeds'}
               style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '0.3rem 0.65rem' }}
             >
               {isPlayingSequence ? <Pause size={13} /> : <Play size={13} />}
@@ -424,7 +451,8 @@ export default function SequenceExplorer({
                   type="button"
                   onClick={() => {
                     onSelectSightingIndex(step.sightingIndex);
-                    if (onSeekCamera) onSeekCamera(step.camera_id, step.timestamp_sec);
+                    const targetSighting = displaySightings[step.sightingIndex];
+                    if (onSeekCamera) onSeekCamera(step.camera_id, step.timestamp_sec, targetSighting);
                   }}
                   style={{
                     fontSize: '0.68rem',
@@ -508,7 +536,7 @@ export default function SequenceExplorer({
                   onClick={() => {
                     onSelectSightingIndex(idx);
                     if (onSeekCamera) {
-                      onSeekCamera(s.camera_id, s.timestamp_sec);
+                      onSeekCamera(s.camera_id, s.timestamp_sec, s);
                     }
                   }}
                   style={{
@@ -596,8 +624,8 @@ export default function SequenceExplorer({
                       )}
                     </div>
 
-                    {/* Bottom Row: Orientation Badge + Seek Button */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '2px' }}>
+                    {/* Bottom Row: Orientation Badge + Action Buttons */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '2px', gap: '0.4rem' }}>
                       <span style={{
                         fontSize: '0.64rem',
                         fontWeight: 700,
@@ -609,28 +637,67 @@ export default function SequenceExplorer({
                         Angle: {ori}
                       </span>
 
-                      <button
-                        type="button"
-                        className="seek-btn-clean"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSelectSightingIndex(idx);
-                          if (onSeekCamera) {
-                            onSeekCamera(s.camera_id, s.timestamp_sec);
-                          }
-                        }}
-                        title="Seek video stream to this exact frame"
-                        style={{
-                          fontSize: '0.68rem',
-                          padding: '2px 6px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '3px'
-                        }}
-                      >
-                        <span>Seek Video</span>
-                        <ArrowUpRight size={11} />
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        {onPlayVideo && s.stream_url && (
+                          <button
+                            type="button"
+                            className="light-chip-btn active"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onPlayVideo({
+                                streamUrl: s.stream_url,
+                                originalName: `${s.identity_name || 'Target'} @ ${s.timestamp || '00:00'}`,
+                                cameraName: s.camera_name || s.camera_id,
+                                timestampSec: s.timestamp_sec,
+                                bbox: {
+                                  x: s.bbox_x,
+                                  y: s.bbox_y,
+                                  w: s.bbox_w,
+                                  h: s.bbox_h,
+                                },
+                                orientation: s.orientation,
+                                globalId: s.global_id,
+                                identityName: s.identity_name,
+                                confidence: s.confidence,
+                              });
+                            }}
+                            title="Play full video clip for this moment"
+                            style={{
+                              fontSize: '0.68rem',
+                              padding: '2px 8px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '3px'
+                            }}
+                          >
+                            <Play size={10} fill="#2563eb" />
+                            <span>Watch Clip</span>
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          className="seek-btn-clean"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSelectSightingIndex(idx);
+                            if (onSeekCamera) {
+                              onSeekCamera(s.camera_id, s.timestamp_sec, s);
+                            }
+                          }}
+                          title="Seek CCTV camera stream to this exact frame"
+                          style={{
+                            fontSize: '0.68rem',
+                            padding: '2px 6px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '3px'
+                          }}
+                        >
+                          <span>Seek Cam</span>
+                          <ArrowUpRight size={11} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>

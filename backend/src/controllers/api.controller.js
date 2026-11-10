@@ -421,7 +421,7 @@ export async function runDetection(req, res) {
       pipelineScript,
       '--clear',
       '--sample-step', String(req.body?.sampleStep || 15),
-      '--conf', String(req.body?.conf || 0.25),
+      '--conf', String(req.body?.conf || 0.40),
     ];
 
     console.log(`[AI Pipeline Agent] Executing: ${pythonPath} ${args.join(' ')}`);
